@@ -25,7 +25,7 @@
 #Contenedor {
   background: rgba(0, 0, 0, 0.897);
   padding: 20px 10px;
-  height: 100vh;
+  height: 100dvh;
   
   /* Establece la altura máxima en 100vh. */
   overflow: hidden;
