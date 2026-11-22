@@ -20,7 +20,7 @@ img{display:block;object-fit:cover}
 .i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .i.fl,.big .i,.btn .i{fill:currentColor;stroke:none}
 
-.app{overflow:auto;display:grid;grid-template-columns:320px 1fr;grid-template-rows:minmax(0,1fr) auto;height:100dvh;max-width:1600px;margin:auto}
+.app{overflow:auto; heigth :100vh;display:grid;grid-template-columns:320px 1fr;grid-template-rows:minmax(0,1fr) auto;height:100dvh;max-width:1600px;margin:auto}
 .side{padding:22px 12px 0 20px;display:flex;flex-direction:column;min-height:0}
 .logo{font-size:26px;margin-bottom:14px}.logo span{color:var(--a)}
 .menu{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
