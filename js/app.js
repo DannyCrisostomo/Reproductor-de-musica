@@ -3,15 +3,98 @@
   const A = new Audio();
   const pad = n => String(n).padStart(2, '0');
   const fmt = s => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const clean = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim() : '');
   const ico = (n, c = '') => `<svg class="i ${c}"><use href="#${n}"/></svg>`;
   const NO = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><defs><linearGradient id="g"><stop stop-color="#00ffde"/><stop offset="1" stop-color="#6a2cff"/></linearGradient></defs><rect width="1" height="1" fill="url(#g)"/></svg>');
-  const img = (src, alt = '') => `<img src="${src}" alt="${alt}" loading="lazy" onerror="this.onerror=null;this.src='${NO}'">`;
+  const img = (src, alt = '') => `<img src="${src || NO}" alt="${esc(alt)}" onerror="this.onerror=null;this.src='${NO}'">`;
 
   const store = {
     get: k => { try { return JSON.parse(localStorage.getItem(k)) } catch { return null } },
     set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
   };
 
+  // ---------- Guardado de archivos en el celular (IndexedDB) ----------
+  let dbp;
+  const openDB = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('playlist-db', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'id', autoIncrement: true });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.onblocked = () => rej(new Error('blocked'));
+  }));
+  const idb = {
+    async all() {
+      try {
+        const d = await openDB();
+        return await new Promise(res => {
+          const q = d.transaction('files').objectStore('files').getAll();
+          q.onsuccess = () => res(q.result); q.onerror = () => res([]);
+        });
+      } catch { return []; }
+    },
+    async add(file) {
+      try {
+        const d = await openDB();
+        return await new Promise(res => {
+          const q = d.transaction('files', 'readwrite').objectStore('files').add({ name: file.name, blob: file });
+          q.onsuccess = () => res(true); q.onerror = () => res(false);
+        });
+      } catch { return false; }
+    },
+    async clear() {
+      try {
+        const d = await openDB();
+        await new Promise(res => {
+          const q = d.transaction('files', 'readwrite').objectStore('files').clear();
+          q.onsuccess = q.onerror = () => res();
+        });
+      } catch {}
+    }
+  };
+
+  // ---------- Leer datos de cada archivo (con límite de tiempo) ----------
+  const keys = new Set();
+  const AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|opus|flac|wma)$/i;
+
+  const readTags = file => new Promise(res => {
+    const t = setTimeout(() => res({}), 3000);
+    const done = v => { clearTimeout(t); res(v); };
+    try {
+      if (!window.jsmediatags) return done({});
+      jsmediatags.read(file, {
+        onSuccess: ({ tags }) => {
+          let cover = null;
+          try {
+            if (tags.picture) {
+              const { data, format } = tags.picture;
+              cover = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: format }));
+            }
+          } catch {}
+          done({ title: clean(tags.title), artist: clean(tags.artist), cover });
+        },
+        onError: () => done({})
+      });
+    } catch { done({}); }
+  });
+
+  const fromName = name => {
+    const base = name.replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
+    const p = base.split(' - ');
+    return p.length > 1 ? { artist: p[0].trim(), title: p.slice(1).join(' - ').trim() } : { artist: 'Mi música', title: base };
+  };
+
+  async function addFile(file) {
+    const key = file.name + file.size;
+    if (keys.has(key)) return false;
+    keys.add(key);
+    const t = await readTags(file);
+    const n = fromName(file.name);
+    songs.push({ title: t.title || n.title, artist: t.artist || n.artist, cover: t.cover || null, src: URL.createObjectURL(file), key });
+    return true;
+  }
+
+  // ---------- Estado ----------
   let cur = 0, view = 'all', query = '', shuffle = false, repeat = false;
   let recent = [];
   const liked = new Set(store.get('liked') || []);
@@ -28,44 +111,62 @@
   function renderList() {
     const ids = visible();
     $('#lista').innerHTML = ids.length
-      ? ids.map((i, k) => `<li data-i="${i}" class="${i === cur ? 'on' : ''}" tabindex="0" role="button" aria-label="Reproducir ${songs[i].title}">
+      ? ids.map((i, k) => `<li data-i="${i}" class="${i === cur ? 'on' : ''}" tabindex="0" role="button" aria-label="Reproducir ${esc(songs[i].title)}">
           <span class="n"><span class="num">${pad(k + 1)}</span><i class="eq"><b></b><b></b><b></b></i></span>
-          ${img(songs[i].cover)}<p>${songs[i].title}<br><span class="mut">${songs[i].artist}</span></p></li>`).join('')
+          ${img(songs[i].cover)}<p>${esc(songs[i].title)}<br><span class="mut">${esc(songs[i].artist)}</span></p></li>`).join('')
       : '<li class="empty">No hay canciones para mostrar.</li>';
   }
 
   function renderRows() {
     $('#songs').innerHTML = songs.map((s, i) => `<button class="card ${i === cur ? 'on' : ''}" data-i="${i}">
-      ${img(s.cover, s.title)}<p>${s.title}</p><span>${s.artist}</span></button>`).join('');
+      ${img(s.cover, s.title)}<p>${esc(s.title)}</p><span>${esc(s.artist)}</span></button>`).join('');
     const artists = [...new Map(songs.map(s => [s.artist, s])).values()];
-    $('#artists').innerHTML = artists.map(s => `<button class="card art" data-artist="${s.artist}">
-      ${img(s.cover, s.artist)}<p>${s.artist}</p></button>`).join('');
+    $('#artists').innerHTML = artists.map(s => `<button class="card art" data-artist="${esc(s.artist)}">
+      ${img(s.cover, s.artist)}<p>${esc(s.artist)}</p></button>`).join('');
     updateArrows();
+  }
+
+  function setCovers(cover, alt) {
+    $('#hCover').outerHTML = img(cover, alt).replace('<img', '<img id="hCover"');
+    $('#pCover').outerHTML = img(cover, '').replace('<img', '<img id="pCover"');
+    $('#hero').style.setProperty('--bg', `url("${cover || NO}")`);
   }
 
   // ---------- Reproducción ----------
   function load(i, go) {
+    if (!songs.length) {
+      setCovers(null, '');
+      $('#hTitle').textContent = $('#pTitle').textContent = 'Añade tu música';
+      $('#hArtist').textContent = $('#pArtist').textContent = 'Toca “Añadir música del celular”';
+      renderList(); renderRows();
+      return;
+    }
     cur = (i + songs.length) % songs.length;
     const s = songs[cur];
     A.src = s.src;
-    $('#hCover').outerHTML = img(s.cover, `Portada de ${s.title}`).replace('<img', '<img id="hCover"');
-    $('#pCover').outerHTML = img(s.cover, '').replace('<img', '<img id="pCover"');
-    $('#hero').style.setProperty('--bg', `url("${s.cover}")`);
+    setCovers(s.cover, `Portada de ${s.title}`);
     $('#hTitle').textContent = $('#pTitle').textContent = s.title;
     $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
     document.title = `${s.title} · ${s.artist}`;
     if (!recent.includes(cur) && go) recent.unshift(cur);
     renderList(); renderRows(); syncLike();
     $('#lista .on')?.scrollIntoView({ block: 'nearest' });
-    if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: s.title, artist: s.artist, artwork: [{ src: s.cover }] });
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: s.title, artist: s.artist, artwork: s.cover ? [{ src: s.cover }] : []
+        });
+      } catch {}
+    }
     if (go) A.play().catch(() => {});
   }
 
   const step = d => {
+    if (!songs.length) return;
     if (shuffle && songs.length > 1) { let r; do r = Math.floor(Math.random() * songs.length); while (r === cur); return load(r, true); }
     load(cur + d, true);
   };
-  const toggle = () => A.paused ? A.play().catch(() => {}) : A.pause();
+  const toggle = () => { if (songs.length) A.paused ? A.play().catch(() => {}) : A.pause(); };
   const prev = () => A.currentTime > 3 ? (A.currentTime = 0) : step(-1);
 
   A.addEventListener('play', () => ui(true));
@@ -111,53 +212,20 @@
   ['songs', 'artists'].forEach(id => document.getElementById(id).addEventListener('scroll', updateArrows, { passive: true }));
   addEventListener('resize', updateArrows);
 
-  // ---------- Eventos ----------
-  $('#lista').addEventListener('click', e => {
-    const li = e.target.closest('li[data-i]'); if (!li) return;
-    const i = +li.dataset.i;
-    i === cur ? toggle() : load(i, true);
-  });
-  $('#lista').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.click(); });
-  $('#songs').addEventListener('click', e => {
-    const c = e.target.closest('[data-i]'); if (c) +c.dataset.i === cur ? toggle() : load(+c.dataset.i, true);
-  });
-  $('#artists').addEventListener('click', e => {
-    const c = e.target.closest('[data-artist]'); if (!c) return;
-    $('#buscar').value = query = c.dataset.artist; view = 'all'; syncMenu(); renderList();
-    $('.side').scrollIntoView({ behavior: 'smooth' });
-  });
-
-  const syncMenu = () => document.querySelectorAll('.menu button').forEach(b => {
-    const on = b.dataset.view === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
-  });
-  document.querySelectorAll('.menu button').forEach(b => b.addEventListener('click', () => { view = b.dataset.view; syncMenu(); renderList(); }));
-  $('#buscar').addEventListener('input', e => { query = e.target.value; renderList(); });
-
-  $('#bPlay').onclick = $('#hPlay').onclick = toggle;
-  $('#bNext').onclick = () => step(1);
-  $('#bPrev').onclick = prev;
-  $('#bShuffle').onclick = e => { shuffle = !shuffle; e.currentTarget.setAttribute('aria-pressed', shuffle); };
-  $('#bRepeat').onclick = e => { repeat = !repeat; e.currentTarget.setAttribute('aria-pressed', repeat); };
-  $('#hLike').onclick = () => { liked.has(cur) ? liked.delete(cur) : liked.add(cur); store.set('liked', [...liked]); syncLike(); };
-
-  $('#seek').addEventListener('input', e => { if (isFinite(A.duration)) A.currentTime = e.target.value / 1000 * A.duration; });
-  const vol = $('#volume');
-  vol.addEventListener('input', () => { A.volume = +vol.value; vol.style.setProperty('--p', vol.value * 100 + '%'); store.set('vol', vol.value); });
-
-  addEventListener('keydown', e => {
-    if (/INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range') return;
-    if (e.code === 'Space' && !/BUTTON/.test(e.target.tagName)) { e.preventDefault(); toggle(); }
-    if (e.code === 'ArrowRight' && e.target.type !== 'range') A.currentTime += 5;
-    if (e.code === 'ArrowLeft' && e.target.type !== 'range') A.currentTime -= 5;
-  });
-
-  if ('mediaSession' in navigator) {
-    const m = navigator.mediaSession;
-    m.setActionHandler('play', toggle); m.setActionHandler('pause', toggle);
-    m.setActionHandler('previoustrack', prev); m.setActionHandler('nexttrack', () => step(1));
-  }
-
-  // ---------- Inicio ----------
-  vol.value = store.get('vol') ?? .7; vol.dispatchEvent(new Event('input'));
-  ui(false); load(0, false);
-})();
+  // ---------- Agregar música del celular ----------
+  $('#files').addEventListener('change', async e => {
+    const files = [...e.target.files].filter(f => f.type.startsWith('audio/') || AUDIO_EXT.test(f.name));
+    const lbl = $('#addLbl');
+    if (!files.length) return;
+    let n = 0;
+    try {
+      for (const f of files) {
+        lbl.textContent = `Cargando ${++n} de ${files.length}…`;
+        if (await addFile(f)) {
+          await idb.add(f);
+          if (songs.length === 1) load(0, false);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
