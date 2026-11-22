@@ -8,7 +8,7 @@
   const clean = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim() : '');
   const ico = (n, c = '') => `<svg class="i ${c}"><use href="#${n}"/></svg>`;
   const NO = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><defs><linearGradient id="g"><stop stop-color="#00ffde"/><stop offset="1" stop-color="#6a2cff"/></linearGradient></defs><rect width="1" height="1" fill="url(#g)"/></svg>');
-  const img = (src, alt = '') => `<img src="${src || NO}" alt="${esc(alt)}" onerror="this.onerror=null;this.src='${NO}'">`;
+  const img = (src, alt = '') => `<img src="${src || NO}" alt="${esc(alt)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${NO}'">`;
   const status = m => { const el = $('#status'); if (el) el.textContent = m; };
   const wait = () => new Promise(r => setTimeout(r, 0));
 
@@ -62,7 +62,7 @@
     if (keys.has(key)) return false;
     keys.add(key);
     const n = fromName(file.name);
-    songs.push({ title: n.title, artist: n.artist, cover: null, src: URL.createObjectURL(file), file, tagged: false });
+    songs.push({ key, title: n.title, artist: n.artist, cover: null, src: URL.createObjectURL(file), file, tagged: false });
     return true;
   }
 
@@ -99,41 +99,49 @@
       if (t.title) s.title = t.title;
       if (t.artist) s.artist = t.artist;
       if (t.cover) s.cover = t.cover;
-      if (++c % 10 === 0) refresh();
+      if (++c % 20 === 0) refresh();
     }
     refresh();
     enriching = false;
   }
 
-  // ---------- Estado ----------
+  // ---------- Estado (se guarda por clave, no por posición) ----------
   let cur = 0, view = 'all', query = '', shuffle = false, repeat = false;
-  let recent = [];
-  const liked = new Set(store.get('liked') || []);
+  let recent = store.get('recentK') || [];
+  const liked = new Set(store.get('likedK') || []);
 
-  // ---------- Lista ----------
+  const indexOfKey = k => songs.findIndex(s => s.key === k);
+
   const visible = () => {
     let ids = songs.map((_, i) => i);
-    if (view === 'recent') ids = recent.slice();
-    if (view === 'rec') ids = ids.filter(i => !recent.includes(i));
+    if (view === 'recent') ids = recent.map(indexOfKey).filter(i => i >= 0);
+    if (view === 'rec') ids = ids.filter(i => !recent.includes(songs[i].key));
     const q = query.trim().toLowerCase();
     return q ? ids.filter(i => `${songs[i].title} ${songs[i].artist}`.toLowerCase().includes(q)) : ids;
   };
 
+  // ---------- Dibujo ----------
   function renderList() {
-    const ids = visible();
-    $('#lista').innerHTML = ids.length
+    const L = $('#lista'), top = L.scrollTop, ids = visible();
+    L.innerHTML = ids.length
       ? ids.map((i, k) => `<li data-i="${i}" class="${i === cur ? 'on' : ''}" tabindex="0" role="button" aria-label="Reproducir ${esc(songs[i].title)}">
           <span class="n"><span class="num">${pad(k + 1)}</span><i class="eq"><b></b><b></b><b></b></i></span>
           ${img(songs[i].cover)}<p>${esc(songs[i].title)}<br><span class="mut">${esc(songs[i].artist)}</span></p></li>`).join('')
       : '<li class="empty">No hay canciones para mostrar.</li>';
+    L.scrollTop = top;
   }
 
   function renderRows() {
-    $('#songs').innerHTML = songs.map((s, i) => `<button class="card ${i === cur ? 'on' : ''}" data-i="${i}">
-      ${img(s.cover, s.title)}<p>${esc(s.title)}</p><span>${esc(s.artist)}</span></button>`).join('');
-    const artists = [...new Map(songs.map(s => [s.artist, s])).values()];
-    $('#artists').innerHTML = artists.map(s => `<button class="card art" data-artist="${esc(s.artist)}">
-      ${img(s.cover, s.artist)}<p>${esc(s.artist)}</p></button>`).join('');
+    const rank = s => (liked.has(s.key) ? 2 : 0) + (recent.includes(s.key) ? 1 : 0);
+    const popular = songs.map((s, i) => i).sort((a, b) => rank(songs[b]) - rank(songs[a])).slice(0, 20);
+    $('#songs').innerHTML = popular.map(i => `<button class="card ${i === cur ? 'on' : ''}" data-i="${i}">
+      ${img(songs[i].cover, songs[i].title)}<p>${esc(songs[i].title)}</p><span>${esc(songs[i].artist)}</span></button>`).join('');
+
+    const by = new Map();
+    songs.forEach(s => { const o = by.get(s.artist) || { s, n: 0 }; o.n++; if (!o.s.cover && s.cover) o.s = s; by.set(s.artist, o); });
+    const artists = [...by.values()].sort((a, b) => b.n - a.n).slice(0, 20);
+    $('#artists').innerHTML = artists.map(({ s, n }) => `<button class="card art" data-artist="${esc(s.artist)}">
+      ${img(s.cover, s.artist)}<p>${esc(s.artist)}</p><span>${n} ${n === 1 ? 'canción' : 'canciones'}</span></button>`).join('');
     updateArrows();
   }
 
@@ -146,10 +154,12 @@
   function refresh() {
     renderList(); renderRows();
     const s = songs[cur];
-    if (s) {
-      $('#hTitle').textContent = $('#pTitle').textContent = s.title;
-      $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
-    }
+    if (s) $('#hTitle').textContent = $('#pTitle').textContent = s.title, $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
+  }
+
+  function centerActive() {
+    const L = $('#lista'), li = L.querySelector('.on');
+    if (li) L.scrollTop = li.offsetTop - L.clientHeight / 2 + li.clientHeight / 2;
   }
 
   // ---------- Reproducción ----------
@@ -168,9 +178,12 @@
     $('#hTitle').textContent = $('#pTitle').textContent = s.title;
     $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
     document.title = `${s.title} · ${s.artist}`;
-    if (!recent.includes(cur) && go) recent.unshift(cur);
-    renderList(); renderRows(); syncLike();
-    $('#lista .on')?.scrollIntoView({ block: 'nearest' });
+    store.set('lastK', s.key);
+    if (go) {
+      recent = [s.key, ...recent.filter(k => k !== s.key)].slice(0, 100);
+      store.set('recentK', recent);
+    }
+    renderList(); renderRows(); syncLike(); centerActive();
     if ('mediaSession' in navigator) {
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
@@ -211,7 +224,7 @@
   }
 
   function syncLike() {
-    const on = liked.has(cur);
+    const on = !!songs[cur] && liked.has(songs[cur].key);
     $('#hLike').setAttribute('aria-pressed', on);
     $('#hLike').innerHTML = `${ico('heart')}${on ? 'Te gusta' : 'Me gusta'}`;
   }
@@ -244,9 +257,7 @@
     let n = 0;
     status('Buscando canciones…');
     for await (const fh of walk(dir)) {
-      try {
-        if (addQuick(await fh.getFile())) n++;
-      } catch {}
+      try { if (addQuick(await fh.getFile())) n++; } catch {}
       if (n && n % 25 === 0) {
         status(`Encontradas ${n}…`);
         if (first === 0 && songs.length === 25) load(0, false);
@@ -317,7 +328,8 @@
   $('#artists').addEventListener('click', e => {
     const c = e.target.closest('[data-artist]'); if (!c) return;
     $('#buscar').value = query = c.dataset.artist; view = 'all'; syncMenu(); renderList();
-    $('.side').scrollIntoView({ behavior: 'smooth' });
+    $('#lista').scrollTop = 0;
+    $('#lista').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   const syncMenu = () => document.querySelectorAll('.menu button').forEach(b => {
@@ -331,7 +343,11 @@
   $('#bPrev').onclick = prev;
   $('#bShuffle').onclick = e => { shuffle = !shuffle; e.currentTarget.setAttribute('aria-pressed', shuffle); };
   $('#bRepeat').onclick = e => { repeat = !repeat; e.currentTarget.setAttribute('aria-pressed', repeat); };
-  $('#hLike').onclick = () => { liked.has(cur) ? liked.delete(cur) : liked.add(cur); store.set('liked', [...liked]); syncLike(); };
+  $('#hLike').onclick = () => {
+    const k = songs[cur]?.key; if (!k) return;
+    liked.has(k) ? liked.delete(k) : liked.add(k);
+    store.set('likedK', [...liked]); syncLike(); renderRows();
+  };
 
   $('#seek').addEventListener('input', e => { if (isFinite(A.duration)) A.currentTime = e.target.value / 1000 * A.duration; });
   const vol = $('#volume');
@@ -358,16 +374,21 @@
     ui(false);
     load(0, false);
 
+    const restore = () => {
+      const i = indexOfKey(store.get('lastK'));
+      load(i >= 0 ? i : 0, false);
+    };
+
     try {
       for (const r of await idb.all()) {
         const f = r.blob instanceof File ? r.blob : new File([r.blob], r.name, { type: r.blob.type });
         addQuick(f);
       }
-      if (songs.length) { load(0, false); status(`${songs.length} canciones guardadas.`); enrich(); }
+      if (songs.length) { restore(); status(`${songs.length} canciones guardadas.`); enrich(); }
 
       const dir = await idb.getMeta('dir');
       if (dir) {
-        if ((await dir.queryPermission({ mode: 'read' })) === 'granted') await scanFolder(dir);
+        if ((await dir.queryPermission({ mode: 'read' })) === 'granted') { await scanFolder(dir); restore(); }
         else status('Toca “Buscar música” para volver a cargar tu carpeta.');
       }
       if (navigator.storage?.persist) navigator.storage.persist();
