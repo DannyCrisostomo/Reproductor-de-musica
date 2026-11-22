@@ -4,7 +4,7 @@ body {
   padding: 0;
   width: 100%;
   min-height: 100%;
-  overflow: auto;
+  overflow: hidden;
 }
 :root{--a:#00ffde;--ink:#04201c;--mut:#b9c1c9;--glass:rgba(12,16,22,.62);--line:rgba(255,255,255,.1)}
 *{margin:0;padding:0;box-sizing:border-box}
