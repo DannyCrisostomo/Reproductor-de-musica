@@ -1,9 +1,12 @@
 (() => {
   const $ = s => document.querySelector(s);
-  const A = new Audio();
+  const P = [new Audio(), new Audio()]; // dos reproductores para poder mezclar
+  let act = 0;
+  const cp = () => P[act];
   const songs = [];
   const pad = n => String(n).padStart(2, '0');
   const fmt = s => `${Math.floor(s / 60)}:${pad(Math.floor(s % 60))}`;
+  const clamp = v => Math.min(1, Math.max(0, v));
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clean = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim() : '');
   const ico = (n, c = '') => `<svg class="i ${c}"><use href="#${n}"/></svg>`;
@@ -105,13 +108,82 @@
     enriching = false;
   }
 
-  // ---------- Estado (se guarda por clave, no por posición) ----------
-  let cur = 0, view = 'all', query = '', shuffle = false, repeat = false;
+  // ---------- Estado ----------
+  let cur = 0, view = 'all', query = '', repeat = false;
+  let shuffle = !!store.get('shuf');
+  let bag = [];          // canciones pendientes en modo aleatorio
+  const hist = [];       // canciones ya reproducidas (para "anterior")
   let recent = store.get('recentK') || [];
   const liked = new Set(store.get('likedK') || []);
-
   const indexOfKey = k => songs.findIndex(s => s.key === k);
 
+  // ---------- Mezcla entre canciones (crossfade) ----------
+  const canFade = (() => { const t = new Audio(); t.volume = 0.5; return t.volume === 0.5; })();
+  let userVol = 0.7;
+  let xf = canFade ? Number(store.get('xf') ?? 10) : 0;
+  let xfading = false, xfDur = 10, fadeTimer = null;
+
+  function nextIndex() {
+    const n = songs.length;
+    if (!n) return null;
+    if (!shuffle || n === 1) return (cur + 1) % n;
+    if (!bag.length) {
+      bag = [...songs.keys()].filter(i => i !== cur);
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+    }
+    let i = bag.pop();
+    if (i === cur && bag.length) i = bag.pop();
+    return i;
+  }
+
+  function applyFade() {
+    if (!xfading) return;
+    const old = P[1 - act], now = cp();
+    const rem = old.duration - old.currentTime;
+    if (!isFinite(rem)) return;
+    if (rem <= 0.05) return endFade();
+    const pr = clamp(1 - rem / xfDur);
+    old.volume = clamp(userVol * Math.cos(pr * Math.PI / 2));
+    now.volume = clamp(userVol * Math.sin(pr * Math.PI / 2));
+  }
+
+  function endFade() {
+    clearInterval(fadeTimer);
+    xfading = false;
+    const old = P[1 - act];
+    old.pause();
+    try { old.currentTime = 0; } catch {}
+    old.volume = userVol;
+    cp().volume = userVol;
+  }
+
+  function checkFade(p) {
+    if (xfading) return applyFade();
+    const d = p.duration, rem = d - p.currentTime;
+    if (xf > 0 && !repeat && !p.paused && songs.length > 1 && isFinite(d) && d >= xf * 2 && rem <= xf && rem > 0.3) startFade();
+  }
+
+  function startFade() {
+    const n = nextIndex();
+    if (n == null) return;
+    const old = cp();
+    xfDur = Math.max(0.5, Math.min(xf, old.duration - old.currentTime));
+    hist.push(cur); if (hist.length > 200) hist.shift();
+    act = 1 - act;
+    xfading = true;
+    showTrack(n, true);
+    const p = cp();
+    p.src = songs[cur].src;
+    p.volume = 0;
+    p.play().catch(() => {});
+    clearInterval(fadeTimer);
+    fadeTimer = setInterval(applyFade, 100);
+  }
+
+  // ---------- Dibujo ----------
   const visible = () => {
     let ids = songs.map((_, i) => i);
     if (view === 'recent') ids = recent.map(indexOfKey).filter(i => i >= 0);
@@ -120,7 +192,6 @@
     return q ? ids.filter(i => `${songs[i].title} ${songs[i].artist}`.toLowerCase().includes(q)) : ids;
   };
 
-  // ---------- Dibujo ----------
   function renderList() {
     const L = $('#lista'), top = L.scrollTop, ids = visible();
     L.innerHTML = ids.length
@@ -154,7 +225,7 @@
   function refresh() {
     renderList(); renderRows();
     const s = songs[cur];
-    if (s) $('#hTitle').textContent = $('#pTitle').textContent = s.title, $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
+    if (s) { $('#hTitle').textContent = $('#pTitle').textContent = s.title; $('#hArtist').textContent = $('#pArtist').textContent = s.artist; }
   }
 
   function centerActive() {
@@ -162,24 +233,16 @@
     if (li) L.scrollTop = li.offsetTop - L.clientHeight / 2 + li.clientHeight / 2;
   }
 
-  // ---------- Reproducción ----------
-  function load(i, go) {
-    if (!songs.length) {
-      setCovers(null, '');
-      $('#hTitle').textContent = $('#pTitle').textContent = 'Añade tu música';
-      $('#hArtist').textContent = $('#pArtist').textContent = 'Toca “Buscar música”';
-      renderList(); renderRows();
-      return;
-    }
+  // Muestra la canción en pantalla (sin tocar el audio)
+  function showTrack(i, played) {
     cur = (i + songs.length) % songs.length;
     const s = songs[cur];
-    A.src = s.src;
     setCovers(s.cover, `Portada de ${s.title}`);
     $('#hTitle').textContent = $('#pTitle').textContent = s.title;
     $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
     document.title = `${s.title} · ${s.artist}`;
     store.set('lastK', s.key);
-    if (go) {
+    if (played) {
       recent = [s.key, ...recent.filter(k => k !== s.key)].slice(0, 100);
       store.set('recentK', recent);
     }
@@ -191,22 +254,56 @@
         });
       } catch {}
     }
-    if (go) A.play().catch(() => {});
+  }
+
+  // ---------- Reproducción ----------
+  function load(i, go, noHist) {
+    if (!songs.length) {
+      setCovers(null, '');
+      $('#hTitle').textContent = $('#pTitle').textContent = 'Añade tu música';
+      $('#hArtist').textContent = $('#pArtist').textContent = 'Toca “Buscar música”';
+      renderList(); renderRows();
+      return;
+    }
+    endFade();
+    const target = (i + songs.length) % songs.length;
+    if (go && !noHist && songs[cur] && target !== cur) { hist.push(cur); if (hist.length > 200) hist.shift(); }
+    showTrack(target, go);
+    const p = cp();
+    p.src = songs[cur].src;
+    p.volume = userVol;
+    if (go) p.play().catch(() => {});
   }
 
   const step = d => {
     if (!songs.length) return;
-    if (shuffle && songs.length > 1) { let r; do r = Math.floor(Math.random() * songs.length); while (r === cur); return load(r, true); }
-    load(cur + d, true);
+    if (d > 0) {
+      const n = nextIndex();
+      if (n != null) load(n, true);
+    } else {
+      if (cp().currentTime > 3) { cp().currentTime = 0; return; }
+      const h = hist.pop();
+      load(h != null ? h : (cur - 1 + songs.length) % songs.length, true, true);
+    }
   };
-  const toggle = () => { if (songs.length) A.paused ? A.play().catch(() => {}) : A.pause(); };
-  const prev = () => A.currentTime > 3 ? (A.currentTime = 0) : step(-1);
 
-  A.addEventListener('play', () => ui(true));
-  A.addEventListener('pause', () => ui(false));
-  A.addEventListener('ended', () => repeat ? (A.currentTime = 0, A.play()) : step(1));
-  A.addEventListener('loadedmetadata', tick);
-  A.addEventListener('timeupdate', tick);
+  const toggle = () => {
+    if (!songs.length) return;
+    const p = cp();
+    if (p.paused) { p.play().catch(() => {}); if (xfading) P[1 - act].play().catch(() => {}); }
+    else { P[0].pause(); P[1].pause(); }
+  };
+
+  P.forEach(p => {
+    p.addEventListener('timeupdate', () => { if (p === cp()) { tick(); checkFade(p); } else applyFade(); });
+    p.addEventListener('loadedmetadata', () => { if (p === cp()) tick(); });
+    p.addEventListener('play', () => { if (p === cp()) ui(true); });
+    p.addEventListener('pause', () => { if (p === cp()) ui(false); });
+    p.addEventListener('ended', () => {
+      if (p !== cp()) return endFade();
+      if (repeat) { p.currentTime = 0; p.play(); } else step(1);
+    });
+  });
 
   function ui(on) {
     document.body.classList.toggle('playing', on);
@@ -216,11 +313,11 @@
   }
 
   function tick() {
-    const d = A.duration, ok = isFinite(d) && d > 0;
-    const p = ok ? A.currentTime / d * 1000 : 0;
-    $('#seek').value = p; $('#seek').style.setProperty('--p', p / 10 + '%');
-    $('#tCur').textContent = fmt(A.currentTime || 0);
-    $('#tLeft').textContent = ok ? '-' + fmt(d - A.currentTime) : '-0:00';
+    const p = cp(), d = p.duration, ok = isFinite(d) && d > 0;
+    const v = ok ? p.currentTime / d * 1000 : 0;
+    $('#seek').value = v; $('#seek').style.setProperty('--p', v / 10 + '%');
+    $('#tCur').textContent = fmt(p.currentTime || 0);
+    $('#tLeft').textContent = ok ? '-' + fmt(d - p.currentTime) : '-0:00';
   }
 
   function syncLike() {
@@ -340,31 +437,53 @@
 
   $('#bPlay').onclick = $('#hPlay').onclick = toggle;
   $('#bNext').onclick = () => step(1);
-  $('#bPrev').onclick = prev;
-  $('#bShuffle').onclick = e => { shuffle = !shuffle; e.currentTarget.setAttribute('aria-pressed', shuffle); };
+  $('#bPrev').onclick = () => step(-1);
+
+  $('#bShuffle').setAttribute('aria-pressed', shuffle);
+  $('#bShuffle').onclick = e => {
+    shuffle = !shuffle; bag = [];
+    store.set('shuf', shuffle);
+    e.currentTarget.setAttribute('aria-pressed', shuffle);
+    status(shuffle ? 'Modo aleatorio activado.' : 'Modo aleatorio desactivado.');
+  };
   $('#bRepeat').onclick = e => { repeat = !repeat; e.currentTarget.setAttribute('aria-pressed', repeat); };
+
+  const xsel = $('#xfade');
+  xsel.value = String(xf);
+  if (!canFade) { xsel.disabled = true; xsel.title = 'Tu navegador no permite cambiar el volumen por código.'; }
+  xsel.addEventListener('change', () => { xf = Number(xsel.value); store.set('xf', xf); });
+
   $('#hLike').onclick = () => {
     const k = songs[cur]?.key; if (!k) return;
     liked.has(k) ? liked.delete(k) : liked.add(k);
     store.set('likedK', [...liked]); syncLike(); renderRows();
   };
 
-  $('#seek').addEventListener('input', e => { if (isFinite(A.duration)) A.currentTime = e.target.value / 1000 * A.duration; });
+  $('#seek').addEventListener('input', e => {
+    const p = cp();
+    if (isFinite(p.duration)) p.currentTime = e.target.value / 1000 * p.duration;
+  });
+
   const vol = $('#volume');
-  vol.addEventListener('input', () => { A.volume = +vol.value; vol.style.setProperty('--p', vol.value * 100 + '%'); store.set('vol', vol.value); });
+  vol.addEventListener('input', () => {
+    userVol = +vol.value;
+    vol.style.setProperty('--p', vol.value * 100 + '%');
+    store.set('vol', vol.value);
+    if (!xfading) cp().volume = userVol;
+  });
 
   addEventListener('keydown', e => {
-    if (/INPUT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range') return;
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.target.type !== 'range') return;
     if (e.code === 'Space' && !/BUTTON|LABEL/.test(e.target.tagName)) { e.preventDefault(); toggle(); }
-    if (e.code === 'ArrowRight' && e.target.type !== 'range') A.currentTime += 5;
-    if (e.code === 'ArrowLeft' && e.target.type !== 'range') A.currentTime -= 5;
+    if (e.code === 'ArrowRight' && e.target.type !== 'range') cp().currentTime += 5;
+    if (e.code === 'ArrowLeft' && e.target.type !== 'range') cp().currentTime -= 5;
   });
 
   if ('mediaSession' in navigator) {
     const m = navigator.mediaSession;
     try {
       m.setActionHandler('play', toggle); m.setActionHandler('pause', toggle);
-      m.setActionHandler('previoustrack', prev); m.setActionHandler('nexttrack', () => step(1));
+      m.setActionHandler('previoustrack', () => step(-1)); m.setActionHandler('nexttrack', () => step(1));
     } catch {}
   }
 
