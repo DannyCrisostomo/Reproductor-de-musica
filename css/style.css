@@ -70,10 +70,11 @@ img{display:block;object-fit:cover}
 .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .sh h3{font-size:18px}
 .arrows{display:flex;gap:6px}
-.ib{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;transition:background .2s,transform .15s,opacity .2s}
+.ib{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;transition:background .2s,transform .15s,opacity .2s,color .2s}
 .ib:hover{background:rgba(255,255,255,.12);transform:scale(1.08)}
 .ib:disabled{opacity:.3;pointer-events:none}
 .ib[aria-pressed=true]{color:var(--a)}
+#bShuffle[aria-pressed=true],#bRepeat[aria-pressed=true]{background:rgba(0,255,222,.14)}
 .flip .i{transform:scaleX(-1)}
 .row{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-bottom:8px;scrollbar-width:none}
 .row::-webkit-scrollbar{display:none}
@@ -111,6 +112,9 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;border:0;border-radiu
 .add{justify-content:center;cursor:pointer;height:42px;font-size:14px}
 .status{font-size:12.5px;color:var(--mut);min-height:1em;line-height:1.3}
 .clear{font-size:12.5px;color:var(--mut);text-decoration:underline;align-self:flex-start;padding:2px 4px}
+.xf{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--mut)}
+.xf select{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:14px;padding:5px 10px;font:inherit;cursor:pointer}
+.xf select option{background:#0f1a22;color:#fff}
 
 @media (max-width:1100px){.app{grid-template-columns:280px 1fr}.main{padding:20px}}
 
@@ -145,10 +149,12 @@ input[type=range]::-moz-range-thumb{width:15px;height:15px;border:0;border-radiu
   .info{grid-area:info}
   .info img{width:44px;height:44px}
   .ctr{display:contents}
-  .btnrow{grid-area:btns;justify-content:flex-end;gap:2px}
+  .btnrow{grid-area:btns;justify-content:flex-end;gap:0}
+  .btnrow .ib{width:36px;height:36px}
+  .btnrow .ib.big{width:42px;height:42px}
+  #bShuffle .i,#bRepeat .i{width:19px;height:19px}
   .time{grid-area:time}
-  .vol,#bShuffle,#bRepeat{display:none}
-  .ib.big{width:42px;height:42px}
+  .vol{display:none}
 }
 @media (max-width:480px){.card{flex-basis:130px}.card img{width:130px;height:130px}.card.art{flex-basis:96px}.card.art img{width:90px;height:90px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
