@@ -120,8 +120,8 @@
   // ---------- Mezcla entre canciones (crossfade) ----------
   const canFade = (() => { const t = new Audio(); t.volume = 0.5; return t.volume === 0.5; })();
   let userVol = 0.7;
-  let xf = canFade ? Number(store.get('xf') ?? 10) : 0;
-  let xfading = false, xfDur = 10, fadeTimer = null;
+  let xf = canFade ? Number(store.get('xf20') ?? 20) : 0;
+  let xfading = false, xfDur = 20, fadeTimer = null;
 
   function nextIndex() {
     const n = songs.length;
@@ -451,7 +451,7 @@
   const xsel = $('#xfade');
   xsel.value = String(xf);
   if (!canFade) { xsel.disabled = true; xsel.title = 'Tu navegador no permite cambiar el volumen por código.'; }
-  xsel.addEventListener('change', () => { xf = Number(xsel.value); store.set('xf', xf); });
+  xsel.addEventListener('change', () => { xf = Number(xsel.value); store.set('xf20', xf); });
 
   $('#hLike').onclick = () => {
     const k = songs[cur]?.key; if (!k) return;
