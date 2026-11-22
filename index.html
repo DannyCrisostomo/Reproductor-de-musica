@@ -26,6 +26,13 @@
 <div class="app">
   <aside class="side">
     <h1 class="logo">Play<span>list</span></h1>
+
+    <div class="addbox">
+      <input type="file" id="files" class="sr-only" accept="audio/*" multiple>
+      <label class="btn fill add" for="files"><span id="addLbl">Añadir música del celular</span></label>
+      <button id="clearMine" class="clear" type="button">Quitar mi música</button>
+    </div>
+
     <nav class="menu" aria-label="Vistas de la lista">
       <button class="on" data-view="all" aria-pressed="true">Playlist</button>
       <button data-view="recent" aria-pressed="false">Last Listening</button>
@@ -108,6 +115,7 @@
   </footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
 </body>
