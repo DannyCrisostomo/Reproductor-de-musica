@@ -563,7 +563,7 @@
   }
 
   // Conexión con js/extras.js
-  window.__player = { P, cp, step, songs, cur: () => cur };
+  window.__player = { P, cp, step, songs, cur: () => cur, load, toggle, gen, esc, liked, recent: () => recent };
 
   // ---------- Inicio ----------
   (async () => {
