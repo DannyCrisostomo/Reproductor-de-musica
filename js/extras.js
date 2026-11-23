@@ -154,4 +154,4 @@
     else if (k === 'p') A.step(-1);
     else if (k === 'l') $('#hLike').click();
   });
-})();
+})(); 
