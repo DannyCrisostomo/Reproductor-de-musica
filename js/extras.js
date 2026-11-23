@@ -10,6 +10,8 @@
   };
   const status = m => { const el = $('#status'); if (el) el.textContent = m; };
   const key = () => A.songs[A.cur()]?.key;
+  let radio = null;   // emisora en curso (ver sección Radio)
+  const isRadio = () => !!radio && A.cp().src === radio.href;
   const anchor = $('#clearMine');
 
   const addSelect = (label, id, opts, value) => {
@@ -78,7 +80,7 @@
   const plays = window.__plays = store.get('plays') || {};
   let counted = null;
   A.P.forEach(p => p.addEventListener('timeupdate', () => {
-    if (p !== A.cp()) return;
+    if (p !== A.cp() || isRadio()) return;
     if (p.currentTime < 2) counted = null;
     if (p.currentTime >= 20 && counted !== p.src && key()) {
       counted = p.src;
@@ -98,7 +100,7 @@
     });
     p.addEventListener('play', () => { resumed = true; });
     p.addEventListener('timeupdate', () => {
-      if (p !== A.cp() || !key()) return;
+      if (p !== A.cp() || !key() || isRadio()) return;
       const now = Date.now();
       if (now - lastSave < 3000) return;
       lastSave = now;
@@ -140,6 +142,7 @@
     p.addEventListener('playing', () => { errs = 0; });
     p.addEventListener('error', () => {
       if (p !== A.cp() || !p.src) return;
+      if (isRadio()) return status('No se pudo reproducir esta emisora. Prueba con otra.');
       if (++errs > 5) return status('Varias canciones seguidas no se pudieron reproducir.');
       status('No se pudo reproducir esa canción. Pasando a la siguiente…');
       setTimeout(() => A.step(1), 800);
@@ -259,4 +262,184 @@
   new MutationObserver(() => { clearTimeout(drawT); drawT = setTimeout(draw, 400); })
     .observe($('#songs'), { childList: true });
   draw();
+  // ---------- Radio (directorio gratuito Radio Browser) ----------
+  const RBS = ['https://de1.api.radio-browser.info', 'https://nl1.api.radio-browser.info', 'https://at1.api.radio-browser.info'];
+  const rb = async path => {
+    for (const b of RBS) {
+      try { const r = await fetch(b + '/json' + path); if (r.ok) return await r.json(); } catch {}
+    }
+    throw new Error('sin conexión con Radio Browser');
+  };
+
+  const rcss = document.createElement('style');
+  rcss.textContent = `
+.main:not(.radio-on)>#x-radio{display:none}
+.main.radio-on>:not(#x-radio):not(.top){display:none!important}
+.rbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.rbar input{flex:1 1 200px;min-width:0;background:rgba(255,255,255,.14);border:0;outline:0;border-radius:20px;padding:9px 14px;color:#fff;font-size:15px;-webkit-user-select:text;user-select:text}
+.rbar input::placeholder{color:var(--mut)}
+.rbar select{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:20px;padding:9px 12px;font:inherit}
+.rbar select option{background:#0f1a22;color:#fff}
+.rchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px}
+.rchips::-webkit-scrollbar{display:none}
+.rchips button{flex:none;padding:7px 14px;border-radius:18px;background:rgba(255,255,255,.08);font-weight:700;font-size:13.5px;color:var(--mut)}
+.rchips button.on{background:var(--a);color:var(--ink)}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.rcard{position:relative;min-width:0;cursor:pointer;transition:transform .2s}
+.rcard:hover{transform:translateY(-4px)}
+.rcard img{width:100%;aspect-ratio:1;border-radius:12px;margin-bottom:8px;background:#111}
+.rcard p{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcard span{display:block;font-size:12.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcard.on img{outline:3px solid var(--a);outline-offset:2px}
+.rfav{position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.55);font-size:16px;line-height:1;color:#fff}
+.rfav[aria-pressed=true]{color:var(--a)}
+@media (max-width:820px){#x-radio{order:3}}
+@media (max-width:480px){.rgrid{grid-template-columns:repeat(2,1fr)}}`;
+  document.head.append(rcss);
+
+  const rsec = document.createElement('section');
+  rsec.id = 'x-radio';
+  rsec.setAttribute('aria-label', 'Radio');
+  rsec.innerHTML = `<div class="sh"><h3>Radio</h3></div>
+    <div class="rbar">
+      <input id="rq" type="search" placeholder="Buscar emisora" aria-label="Buscar emisora">
+      <select id="rc" aria-label="País">
+        <option value="PE">Perú</option><option value="MX">México</option><option value="CO">Colombia</option>
+        <option value="AR">Argentina</option><option value="CL">Chile</option><option value="EC">Ecuador</option>
+        <option value="BO">Bolivia</option><option value="ES">España</option><option value="US">EE. UU.</option>
+        <option value="">Todo el mundo</option>
+      </select>
+    </div>
+    <div class="rchips" id="rt"></div>
+    <div class="rgrid" id="rg"></div>`;
+  main.append(rsec);
+
+  let rCountry = store.get('radioCountry') ?? 'PE', rTag = '', rName = '', rFavOnly = false, rLoaded = false, rTok = 0;
+  const favs = store.get('radioFav') || [];
+  const rmap = new Map(favs.map(s => [s.uuid, s]));
+  const isFav = u => favs.some(f => f.uuid === u);
+  const isCur = s => isRadio() && radio.uuid === s.uuid;
+  $('#rc').value = rCountry;
+
+  const TAGS = [['', 'Todas'], ['cumbia', 'Cumbia'], ['salsa', 'Salsa'], ['pop', 'Pop'], ['rock', 'Rock'],
+    ['romantic', 'Románticas'], ['news', 'Noticias'], ['folk', 'Folklore']];
+  const drawChips = () => {
+    $('#rt').innerHTML = TAGS.map(([v, t]) => `<button data-tag="${v}" class="${!rFavOnly && rTag === v ? 'on' : ''}">${t}</button>`).join('') +
+      `<button data-fav-only="1" class="${rFavOnly ? 'on' : ''}">★ Mis emisoras</button>`;
+  };
+
+  const norm = s => ({ uuid: s.stationuuid, name: (s.name || '').trim() || 'Emisora', url: s.url_resolved,
+    logo: s.favicon || '', country: s.country || '', bitrate: s.bitrate || 0 });
+  const rLogo = s => (s.logo && s.logo.startsWith('https') ? s.logo : A.gen(s.name, s.name));
+  const rcard = s => {
+    const fb = A.gen(s.name, s.name);
+    const info = [s.country, s.bitrate ? s.bitrate + ' kbps' : ''].filter(Boolean).join(' · ');
+    return `<div class="rcard${isCur(s) ? ' on' : ''}" data-ru="${A.esc(s.uuid)}" tabindex="0" role="button" aria-label="Escuchar ${A.esc(s.name)}">
+      <img src="${A.esc(rLogo(s))}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${fb}'">
+      <p>${A.esc(s.name)}</p><span>${A.esc(info)}</span>
+      <button class="rfav" data-fav="${A.esc(s.uuid)}" aria-pressed="${isFav(s.uuid)}" aria-label="Guardar emisora">★</button></div>`;
+  };
+  const drawRadios = (list, empty = 'No se encontraron emisoras.') => {
+    list.forEach(s => rmap.set(s.uuid, s));
+    $('#rg').innerHTML = list.length ? list.map(rcard).join('') : `<p class="mut">${empty}</p>`;
+  };
+
+  async function loadRadios() {
+    drawChips();
+    if (rFavOnly) return drawRadios(favs, 'Aún no guardaste emisoras con ★.');
+    const my = ++rTok;
+    $('#rg').innerHTML = '<p class="mut">Buscando emisoras…</p>';
+    const p = new URLSearchParams({ limit: 80, hidebroken: true, order: 'clickcount', reverse: true, is_https: true });
+    if (rCountry) p.set('countrycode', rCountry);
+    if (rTag) p.set('tag', rTag);
+    if (rName) p.set('name', rName);
+    try {
+      const data = await rb('/stations/search?' + p);
+      if (my !== rTok) return;
+      const seen = new Set();
+      drawRadios(data.filter(s => s.url_resolved && s.url_resolved.startsWith('https')).map(norm)
+        .filter(s => { const k = s.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+        .slice(0, 48));
+    } catch {
+      if (my === rTok) $('#rg').innerHTML = '<p class="mut">No se pudo conectar con el directorio de radios. Revisa tu conexión.</p>';
+    }
+  }
+
+  const markOn = () => $('#rg').querySelectorAll('.rcard')
+    .forEach(c => c.classList.toggle('on', isRadio() && radio.uuid === c.dataset.ru));
+  A.P.forEach(p => p.addEventListener('loadstart', markOn));
+
+  function playRadio(s) {
+    radio = { ...s, href: new URL(s.url, location.href).href };
+    const p = A.cp();
+    A.P.forEach(x => { if (x !== p) x.pause(); });
+    p.src = s.url;
+    p.play().catch(() => status('No se pudo reproducir esta emisora. Prueba con otra.'));
+    $('#pTitle').textContent = s.name;
+    $('#pArtist').textContent = 'Radio' + (s.country ? ' · ' + s.country : '');
+    $('#pCover').src = rLogo(s);
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: s.name, artist: 'Radio',
+          artwork: s.logo && s.logo.startsWith('https') ? [{ src: s.logo }] : []
+        });
+      } catch {}
+    }
+    rb('/url/' + encodeURIComponent(s.uuid)).catch(() => {}); // cuenta la escucha en el directorio
+    markOn();
+    status('Radio: ' + s.name);
+  }
+
+  const toggleRadio = () => {
+    const p = A.cp();
+    if (p.paused) p.play().catch(() => {}); else A.P.forEach(x => x.pause());
+  };
+  // Con la radio sonando, los botones Play/Pausa controlan la emisora
+  document.addEventListener('click', e => {
+    if (isRadio() && e.target.closest('#bPlay, #hPlay')) { e.stopPropagation(); toggleRadio(); }
+  }, true);
+
+  const toggleFav = u => {
+    const i = favs.findIndex(f => f.uuid === u);
+    if (i >= 0) favs.splice(i, 1);
+    else { const s = rmap.get(u); if (s) favs.push(s); }
+    store.set('radioFav', favs);
+    rsec.querySelectorAll('[data-fav]').forEach(b => b.setAttribute('aria-pressed', isFav(b.dataset.fav)));
+    if (rFavOnly) drawRadios(favs, 'Aún no guardaste emisoras con ★.');
+  };
+
+  rsec.addEventListener('click', e => {
+    const f = e.target.closest('[data-fav]');
+    if (f) return toggleFav(f.dataset.fav);
+    const t = e.target.closest('[data-tag]');
+    if (t) { rTag = t.dataset.tag; rFavOnly = false; return loadRadios(); }
+    if (e.target.closest('[data-fav-only]')) { rFavOnly = !rFavOnly; return loadRadios(); }
+    const c = e.target.closest('[data-ru]');
+    if (c) { const s = rmap.get(c.dataset.ru); if (s) isCur(s) ? toggleRadio() : playRadio(s); }
+  });
+  rsec.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('.rcard')) e.target.click(); });
+
+  let rT;
+  $('#rq').addEventListener('input', e => {
+    clearTimeout(rT);
+    rT = setTimeout(() => { rName = e.target.value.trim(); rFavOnly = false; loadRadios(); }, 450);
+  });
+  $('#rc').addEventListener('change', e => {
+    rCountry = e.target.value; store.set('radioCountry', rCountry); rFavOnly = false; loadRadios();
+  });
+
+  // Pestañas: Discover (música) y Radio
+  const tabs = [...document.querySelectorAll('.tabs a')];
+  const showRadio = on => {
+    main.classList.toggle('radio-on', on);
+    tabs.forEach((a, i) => {
+      const act = on ? i === 2 : i === 0;
+      a.classList.toggle('on', act);
+      if (act) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    if (on && !rLoaded) { rLoaded = true; loadRadios(); }
+  };
+  tabs[0]?.addEventListener('click', e => { e.preventDefault(); showRadio(false); });
+  tabs[2]?.addEventListener('click', e => { e.preventDefault(); showRadio(true); });
 })();
