@@ -133,6 +133,11 @@
 
 <!-- Librería local (así funciona sin internet) -->
 <script src="js/jsmediatags.min.js"></script>
+<!-- Respaldo: si el archivo local no existe o falló, se carga desde internet -->
+<script>
+  window.jsmediatags ||
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"><\/script>');
+</script>
 <script src="js/app.js"></script>
 
 <!-- Service worker: guarda la página para usarla sin conexión -->
