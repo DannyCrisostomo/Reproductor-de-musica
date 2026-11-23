@@ -261,6 +261,7 @@
   const visible = () => {
     let ids = songs.map((_, i) => i);
     if (view === 'recent') ids = recent.map(indexOfKey).filter(i => i >= 0);
+    if (view === 'liked') ids = ids.filter(i => liked.has(songs[i].key));
     if (view === 'rec') ids = ids.filter(i => !recent.includes(songs[i].key));
     const q = query.trim().toLowerCase();
     return q ? ids.filter(i => `${songs[i].title} ${songs[i].artist}`.toLowerCase().includes(q)) : ids;
@@ -277,7 +278,7 @@
   }
 
   function renderRows() {
-    const rank = s => (liked.has(s.key) ? 2 : 0) + (recent.includes(s.key) ? 1 : 0);
+    const rank = s => (window.__plays?.[s.key] || 0) * 3 + (liked.has(s.key) ? 2 : 0) + (recent.includes(s.key) ? 1 : 0);
     const popular = songs.map((s, i) => i).sort((a, b) => rank(songs[b]) - rank(songs[a])).slice(0, 20);
     $('#songs').innerHTML = popular.map(i => `<button class="card ${i === cur ? 'on' : ''}" data-i="${i}">
       ${img(songs[i].cover, songs[i].title, gen(songs[i].title, songs[i].artist))}<p>${esc(songs[i].title)}</p><span>${esc(songs[i].artist)}</span></button>`).join('');
@@ -560,6 +561,9 @@
       m.setActionHandler('previoustrack', () => step(-1)); m.setActionHandler('nexttrack', () => step(1));
     } catch {}
   }
+
+  // Conexión con js/extras.js
+  window.__player = { P, cp, step, songs, cur: () => cur };
 
   // ---------- Inicio ----------
   (async () => {
