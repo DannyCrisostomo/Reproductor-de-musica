@@ -11,7 +11,20 @@
   const clean = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim() : '');
   const ico = (n, c = '') => `<svg class="i ${c}"><use href="#${n}"/></svg>`;
   const NO = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><defs><linearGradient id="g"><stop stop-color="#00ffde"/><stop offset="1" stop-color="#6a2cff"/></linearGradient></defs><rect width="1" height="1" fill="url(#g)"/></svg>');
-  const img = (src, alt = '') => `<img src="${src || NO}" alt="${esc(alt)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${NO}'">`;
+  // Portada automática (color + inicial) para canciones sin imagen incrustada. Funciona sin internet.
+  const genCache = new Map();
+  const gen = (title, artist) => {
+    const base = artist && artist !== 'Mi música' ? artist : (title || '?');
+    if (genCache.has(base)) return genCache.get(base);
+    let h = 0;
+    for (const c of base) h = (h * 31 + c.charCodeAt(0)) % 360;
+    const letra = ((base.match(/[A-Za-z0-9ÁÉÍÓÚÑáéíóúñ]/) || ['♪'])[0]).toUpperCase();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${h},75%,48%)"/><stop offset="1" stop-color="hsl(${(h + 55) % 360},75%,28%)"/></linearGradient></defs><rect width="100" height="100" fill="url(#g)"/><text x="50" y="50" dy=".35em" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="46" fill="rgba(255,255,255,.88)">${letra}</text></svg>`;
+    const uri = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    genCache.set(base, uri);
+    return uri;
+  };
+  const img = (src, alt = '', fb) => `<img src="${src || fb || NO}" alt="${esc(alt)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${fb || NO}'">`;
   const status = m => { const el = $('#status'); if (el) el.textContent = m; };
   const wait = () => new Promise(r => setTimeout(r, 0));
 
@@ -209,7 +222,7 @@
     L.innerHTML = ids.length
       ? ids.map((i, k) => `<li data-i="${i}" class="${i === cur ? 'on' : ''}" tabindex="0" role="button" aria-label="Reproducir ${esc(songs[i].title)}">
           <span class="n"><span class="num">${pad(k + 1)}</span><i class="eq"><b></b><b></b><b></b></i></span>
-          ${img(songs[i].cover)}<p>${esc(songs[i].title)}<br><span class="mut">${esc(songs[i].artist)}</span></p></li>`).join('')
+          ${img(songs[i].cover, '', gen(songs[i].title, songs[i].artist))}<p>${esc(songs[i].title)}<br><span class="mut">${esc(songs[i].artist)}</span></p></li>`).join('')
       : '<li class="empty">No hay canciones para mostrar.</li>';
     L.scrollTop = top;
   }
@@ -218,20 +231,20 @@
     const rank = s => (liked.has(s.key) ? 2 : 0) + (recent.includes(s.key) ? 1 : 0);
     const popular = songs.map((s, i) => i).sort((a, b) => rank(songs[b]) - rank(songs[a])).slice(0, 20);
     $('#songs').innerHTML = popular.map(i => `<button class="card ${i === cur ? 'on' : ''}" data-i="${i}">
-      ${img(songs[i].cover, songs[i].title)}<p>${esc(songs[i].title)}</p><span>${esc(songs[i].artist)}</span></button>`).join('');
+      ${img(songs[i].cover, songs[i].title, gen(songs[i].title, songs[i].artist))}<p>${esc(songs[i].title)}</p><span>${esc(songs[i].artist)}</span></button>`).join('');
 
     const by = new Map();
     songs.forEach(s => { const o = by.get(s.artist) || { s, n: 0 }; o.n++; if (!o.s.cover && s.cover) o.s = s; by.set(s.artist, o); });
     const artists = [...by.values()].sort((a, b) => b.n - a.n).slice(0, 20);
     $('#artists').innerHTML = artists.map(({ s, n }) => `<button class="card art" data-artist="${esc(s.artist)}">
-      ${img(s.cover, s.artist)}<p>${esc(s.artist)}</p><span>${n} ${n === 1 ? 'canción' : 'canciones'}</span></button>`).join('');
+      ${img(s.cover, s.artist, gen(s.artist, s.artist))}<p>${esc(s.artist)}</p><span>${n} ${n === 1 ? 'canción' : 'canciones'}</span></button>`).join('');
     updateArrows();
   }
 
-  function setCovers(cover, alt) {
-    $('#hCover').outerHTML = img(cover, alt).replace('<img', '<img id="hCover"');
-    $('#pCover').outerHTML = img(cover, '').replace('<img', '<img id="pCover"');
-    $('#hero').style.setProperty('--bg', `url("${cover || NO}")`);
+  function setCovers(cover, alt, fb) {
+    $('#hCover').outerHTML = img(cover, alt, fb).replace('<img', '<img id="hCover"');
+    $('#pCover').outerHTML = img(cover, '', fb).replace('<img', '<img id="pCover"');
+    $('#hero').style.setProperty('--bg', `url("${cover || fb || NO}")`);
   }
 
   function refresh() {
@@ -249,7 +262,7 @@
   function showTrack(i, played) {
     cur = (i + songs.length) % songs.length;
     const s = songs[cur];
-    setCovers(s.cover, `Portada de ${s.title}`);
+    setCovers(s.cover, `Portada de ${s.title}`, gen(s.title, s.artist));
     $('#hTitle').textContent = $('#pTitle').textContent = s.title;
     $('#hArtist').textContent = $('#pArtist').textContent = s.artist;
     document.title = `${s.title} · ${s.artist}`;
