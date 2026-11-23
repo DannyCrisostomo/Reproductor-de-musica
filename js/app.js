@@ -69,11 +69,13 @@
     return true;
   }
 
+  // Lee título, artista y portada incrustados en el archivo.
+  // Devuelve además una marca para saber qué pasó: leido | error | lento | sinLib
   const readTags = file => new Promise(res => {
-    const t = setTimeout(() => res({}), 3000);
+    const t = setTimeout(() => res({ lento: true }), 8000);
     const done = v => { clearTimeout(t); res(v); };
     try {
-      if (!window.jsmediatags) return done({});
+      if (!window.jsmediatags) return done({ sinLib: true });
       jsmediatags.read(file, {
         onSuccess: ({ tags }) => {
           let cover = null;
@@ -83,29 +85,39 @@
               cover = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: format }));
             }
           } catch {}
-          done({ title: clean(tags.title), artist: clean(tags.artist), cover });
+          done({ title: clean(tags.title), artist: clean(tags.artist), cover, leido: true });
         },
-        onError: () => done({})
+        onError: () => done({ error: true })
       });
-    } catch { done({}); }
+    } catch { done({ error: true }); }
   });
 
   let enriching = false;
   async function enrich() {
     if (enriching) return;
     enriching = true;
+    const r = { leidos: 0, portadas: 0, errores: 0, lentas: 0, sinLib: false };
     let c = 0;
     for (const s of songs) {
       if (s.tagged) continue;
       s.tagged = true;
       const t = await readTags(s.file);
+      if (t.sinLib) r.sinLib = true;
+      if (t.error) r.errores++;
+      if (t.lento) r.lentas++;
+      if (t.leido) r.leidos++;
       if (t.title) s.title = t.title;
       if (t.artist) s.artist = t.artist;
-      if (t.cover) s.cover = t.cover;
-      if (++c % 20 === 0) refresh();
+      if (t.cover) { s.cover = t.cover; r.portadas++; }
+      if (++c % 20 === 0) { refresh(); status(`Leyendo datos… ${c} de ${songs.length}`); }
     }
     refresh();
     enriching = false;
+    status(
+      r.sinLib
+        ? 'El lector de portadas NO cargó.'
+        : `Leídas: ${r.leidos} · con portada: ${r.portadas} · errores: ${r.errores} · lentas: ${r.lentas}`
+    );
   }
 
   // ---------- Estado ----------
