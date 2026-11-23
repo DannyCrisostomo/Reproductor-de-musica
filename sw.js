@@ -16,8 +16,10 @@ const PRECACHE = [
   './img_estilos/fondo.png',
   './img_estilos/cursor.png',
   './img_estilos/user.jpg',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
+  './img/image1.jpg',
+  './img/image2.jpg',
+  './img/image3.jpg',
+  './img/image4.jpg',
 ];
 
 self.addEventListener('install', (e) => {
