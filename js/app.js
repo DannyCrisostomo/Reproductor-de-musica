@@ -36,11 +36,12 @@
   // ---------- Almacenamiento (IndexedDB) ----------
   let dbp;
   const openDB = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('playlist-db', 2);
+    const r = indexedDB.open('playlist-db', 3);
     r.onupgradeneeded = () => {
       const d = r.result;
       if (!d.objectStoreNames.contains('files')) d.createObjectStore('files', { keyPath: 'id', autoIncrement: true });
       if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+      if (!d.objectStoreNames.contains('tags')) d.createObjectStore('tags');
     };
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -60,7 +61,17 @@
     add: file => tx('files', 'readwrite', s => s.add({ name: file.name, blob: file })),
     getMeta: k => tx('meta', 'readonly', s => s.get(k)),
     setMeta: (k, v) => tx('meta', 'readwrite', s => s.put(v, k)),
-    clearAll: async () => { await tx('files', 'readwrite', s => s.clear()); await tx('meta', 'readwrite', s => s.clear()); }
+    tagsAll: async () => {
+      const ks = (await tx('tags', 'readonly', s => s.getAllKeys())) || [];
+      const vs = (await tx('tags', 'readonly', s => s.getAll())) || [];
+      return ks.map((k, i) => [k, vs[i]]);
+    },
+    tagsPut: (k, v) => tx('tags', 'readwrite', s => s.put(v, k)),
+    clearAll: async () => {
+      await tx('files', 'readwrite', s => s.clear());
+      await tx('meta', 'readwrite', s => s.clear());
+      await tx('tags', 'readwrite', s => s.clear());
+    }
   };
 
   // ---------- Canciones ----------
@@ -91,46 +102,84 @@
       if (!window.jsmediatags) return done({ sinLib: true });
       jsmediatags.read(file, {
         onSuccess: ({ tags }) => {
-          let cover = null;
+          let cover = null, coverBlob = null;
           try {
             if (tags.picture) {
               const { data, format } = tags.picture;
-              cover = URL.createObjectURL(new Blob([new Uint8Array(data)], { type: format }));
+              coverBlob = new Blob([new Uint8Array(data)], { type: format });
+              cover = URL.createObjectURL(coverBlob);
             }
           } catch {}
-          done({ title: clean(tags.title), artist: clean(tags.artist), cover, leido: true });
+          done({ title: clean(tags.title), artist: clean(tags.artist), cover, coverBlob, leido: true });
         },
         onError: () => done({ error: true })
       });
     } catch { done({ error: true }); }
   });
 
+  // Los datos ya leídos se guardan en el navegador: la próxima vez salen al instante y sin internet.
+  let tagCache = null;
+  const loadTagCache = async () => { if (!tagCache) tagCache = new Map(await idb.tagsAll()); };
+
+  const aplicarTags = (s, t) => {
+    if (t.title) s.title = t.title;
+    if (t.artist) s.artist = t.artist;
+    if (t.cover) s.cover = t.cover;
+  };
+
+  async function applyCache() {
+    await loadTagCache();
+    let n = 0;
+    for (const s of songs) {
+      const c = tagCache.get(s.key);
+      if (!c || s.tagged) continue;
+      s.tagged = true;
+      aplicarTags(s, { title: c.title, artist: c.artist, cover: c.cover ? URL.createObjectURL(c.cover) : null });
+      n++;
+    }
+    return n;
+  }
+
   let enriching = false;
   async function enrich() {
     if (enriching) return;
     enriching = true;
+    await applyCache();
+    refresh();
+    const cola = songs.filter(s => !s.tagged);
+    const total = cola.length;
     const r = { leidos: 0, portadas: 0, errores: 0, lentas: 0, sinLib: false };
-    let c = 0;
-    for (const s of songs) {
-      if (s.tagged) continue;
-      s.tagged = true;
-      const t = await readTags(s.file);
-      if (t.sinLib) r.sinLib = true;
-      if (t.error) r.errores++;
-      if (t.lento) r.lentas++;
-      if (t.leido) r.leidos++;
-      if (t.title) s.title = t.title;
-      if (t.artist) s.artist = t.artist;
-      if (t.cover) { s.cover = t.cover; r.portadas++; }
-      if (++c % 20 === 0) { refresh(); status(`Leyendo datos… ${c} de ${songs.length}`); }
-    }
+    let hechas = 0, ultimo = 0;
+    const trabajador = async () => {
+      while (cola.length) {
+        const s = cola.shift();
+        s.tagged = true;
+        const t = await readTags(s.file);
+        if (t.sinLib) r.sinLib = true;
+        if (t.error) r.errores++;
+        if (t.lento) r.lentas++;
+        if (t.leido) {
+          r.leidos++;
+          idb.tagsPut(s.key, { title: t.title, artist: t.artist, cover: t.coverBlob || null });
+        }
+        if (t.cover) r.portadas++;
+        aplicarTags(s, t);
+        hechas++;
+        const ahora = Date.now();
+        if (ahora - ultimo > 1200) { ultimo = ahora; refresh(); status(`Leyendo datos… ${hechas} de ${total}`); }
+      }
+    };
+    await Promise.all(Array.from({ length: 4 }, trabajador)); // 4 canciones a la vez
     refresh();
     enriching = false;
-    status(
-      r.sinLib
-        ? 'El lector de portadas NO cargó.'
-        : `Leídas: ${r.leidos} · con portada: ${r.portadas} · errores: ${r.errores} · lentas: ${r.lentas}`
-    );
+    if (total) {
+      status(
+        r.sinLib
+          ? 'El lector de portadas NO cargó.'
+          : `Datos leídos: ${r.leidos} · con portada: ${r.portadas} · errores: ${r.errores} · lentas: ${r.lentas}`
+      );
+    }
+    if (songs.some(x => !x.tagged)) return enrich(); // llegaron canciones nuevas mientras tanto
   }
 
   // ---------- Estado ----------
@@ -528,6 +577,7 @@
         const f = r.blob instanceof File ? r.blob : new File([r.blob], r.name, { type: r.blob.type });
         addQuick(f);
       }
+      await applyCache();
       if (songs.length) { restore(); status(`${songs.length} canciones guardadas.`); enrich(); }
 
       const dir = await idb.getMeta('dir');
