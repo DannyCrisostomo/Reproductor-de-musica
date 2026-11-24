@@ -99,6 +99,9 @@
           <h4>Agregar a la playlist</h4>
           <button id="lib-picker-close" class="lib-chip primary" type="button">Listo</button>
         </div>
+        <div class="lib-pick-search">
+          <input id="lib-pick-q" type="search" placeholder="Buscar en tu música" aria-label="Buscar en tu música">
+        </div>
         <ul id="lib-pick-list" class="lib-pick-list"></ul>
       </dialog>
     </section>
@@ -175,6 +178,7 @@
 <script src="js/library-store.js"></script>
 <script src="js/app.js"></script>
 <script src="js/extras.js"></script>
+<script src="js/library-bridge.js"></script>
 <script src="js/library-view.js"></script>
 
 <!-- Service worker: guarda la página para usarla sin conexión -->
