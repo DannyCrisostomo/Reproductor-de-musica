@@ -1,67 +1,86 @@
-/* css/library.css — estilos de la pestaña My library.
+/* css/library.css — "Mi biblioteca" (estilo Spotify).
    Usa las variables de style.css (--a, --mut, --line, --ink). */
 
-/* Mostrar solo My library cuando la pestaña está activa */
+/* Mostrar solo la biblioteca cuando la pestaña está activa */
 #view-library{display:none}
 .main.lib-open #view-library{display:block}
 .main.lib-open > :not(.top):not(#view-library){display:none}
 #view-library [hidden]{display:none!important}
 
-/* Filtros */
-.lib-filters{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px}
-.lib-filters::-webkit-scrollbar{display:none}
-.lib-chip{display:inline-flex;align-items:center;white-space:nowrap;height:38px;padding:0 18px;border-radius:20px;
-  font-weight:800;color:var(--mut);background:rgba(255,255,255,.1);transition:background .2s,color .2s}
-.lib-chip:hover{background:rgba(255,255,255,.16);color:#fff}
-.lib-chip.on{background:var(--a);color:var(--ink)}
-.lib-toolbar{margin-bottom:14px}
-
-/* Rejilla */
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
-.lib-card{min-width:0;cursor:pointer;transition:transform .2s}
-.lib-card:hover{transform:translateY(-4px)}
-.lib-card p{font-size:14px;font-weight:700;margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lib-card > span{display:block;font-size:12.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* Portada (si no hay imagen, muestra la inicial sobre un degradado) */
-.lib-cover{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;
-  display:grid;place-items:center;
-  background:linear-gradient(135deg,hsl(var(--h) 70% 45%),hsl(calc(var(--h) + 40) 70% 28%))}
-.lib-cover span{font-size:64px;font-weight:900;color:rgba(255,255,255,.88)}
-.lib-cover img{position:absolute;inset:0;width:100%;height:100%}
-
-/* Botones sobre la portada */
-.lib-btn{position:absolute;top:8px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
-  font-size:16px;line-height:1;background:rgba(0,0,0,.55);color:#fff;transition:background .2s,color .2s}
-.lib-btn.left{left:8px}
-.lib-btn.right{right:8px}
-.lib-btn:hover{background:rgba(0,0,0,.8)}
-.lib-btn.fav[aria-pressed=true]{color:#ffd54a}
-
-/* Tarjeta de playlist */
-.lib-pl{position:relative;aspect-ratio:1;border-radius:14px;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;
-  background:linear-gradient(135deg,hsl(var(--h) 55% 32%),hsl(calc(var(--h) + 40) 55% 16%));border:1px solid var(--line)}
-.lib-pl h4{font-size:16px;overflow-wrap:anywhere}
-.lib-pl small{color:var(--mut)}
-
-.lib-empty{color:var(--mut);text-align:center;margin:48px 12px}
-
-@media (max-width:480px){
-  .lib-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
-  .lib-cover span{font-size:52px}
+/* En el teléfono, ocultar el panel superior (Buscar música, ajustes y lista) */
+@media (max-width:820px){
+  .app:has(.main.lib-open) :is(.addbox,.menu,.lista){display:none}
 }
 
-/* ===== Botones de agregar más visibles ===== */
-.lib-chip.primary{background:var(--a);color:var(--ink)}
-.lib-chip.primary:hover{background:#6dffea;color:var(--ink)}
-.lib-chip.big{height:48px;padding:0 26px;font-size:16px;box-shadow:0 8px 20px rgba(0,255,222,.3)}
-.lib-chip:disabled{opacity:.55;pointer-events:none}
+/* Cabecera */
+.lib-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.lib-head h3{flex:1;min-width:0;font-size:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-head-actions{display:flex;gap:6px}
 
-/* ＋ y ★ sobre las tarjetas: más grandes; el ＋ en color de acento */
-.lib-btn{width:40px;height:40px;font-size:18px}
-.lib-btn[data-act="add"]{background:var(--a);color:var(--ink);font-size:24px;font-weight:900;
-  box-shadow:0 4px 14px rgba(0,255,222,.45)}
-.lib-btn[data-act="add"]:hover{background:#6dffea}
+/* Botones redondos */
+.lib-icon{display:inline-grid;place-items:center;flex:none;width:40px;height:40px;border-radius:50%;
+  font-size:18px;line-height:1;color:#fff;background:rgba(255,255,255,.1);
+  transition:background .2s,color .2s,transform .15s}
+.lib-icon:hover{background:rgba(255,255,255,.18);transform:scale(1.06)}
+.lib-icon.primary{background:var(--a);color:var(--ink);font-size:22px;font-weight:900}
+.lib-icon.primary:hover{background:#6dffea}
+.lib-icon.fav[aria-pressed=true]{color:#ffd54a}
+
+/* Chips */
+.lib-filters{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:14px}
+.lib-filters::-webkit-scrollbar{display:none}
+.lib-chip{display:inline-flex;align-items:center;white-space:nowrap;height:36px;padding:0 18px;border-radius:20px;
+  font-weight:800;color:#fff;background:rgba(255,255,255,.1);transition:background .2s,color .2s}
+.lib-chip:hover{background:rgba(255,255,255,.18)}
+.lib-chip.on,.lib-chip.primary{background:var(--a);color:var(--ink)}
+.lib-chip.primary:hover{background:#6dffea}
+.lib-chip.big{height:46px;padding:0 24px;font-size:15px}
+.lib-chip.primary.big{box-shadow:0 8px 20px rgba(0,255,222,.3)}
+.lib-chip:disabled{opacity:.5;pointer-events:none}
+
+/* Lista (filas) */
+.lib-list{display:flex;flex-direction:column;gap:4px}
+.lib-row{position:relative;display:flex;align-items:center;gap:14px;min-width:0;padding:8px;border-radius:12px;
+  cursor:pointer;transition:background .2s,transform .2s}
+.lib-row:hover{background:rgba(255,255,255,.07)}
+.lib-meta{flex:1;min-width:0}
+.lib-meta p{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-meta span{display:block;font-size:13px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-acts{display:flex;flex:none;gap:2px}
+.lib-acts .lib-icon{width:38px;height:38px;background:none}
+.lib-acts .lib-icon:hover{background:rgba(255,255,255,.12)}
+.lib-acts .lib-icon[data-act="add"]{color:var(--a);font-size:22px;font-weight:900}
+
+/* Miniaturas */
+.lib-thumb{position:relative;flex:none;width:60px;height:60px;border-radius:10px;overflow:hidden;
+  display:grid;place-items:center;
+  background:linear-gradient(135deg,hsl(var(--h) 70% 45%),hsl(calc(var(--h) + 40) 70% 28%))}
+.lib-thumb span{font-size:26px;font-weight:900;color:rgba(255,255,255,.9)}
+.lib-thumb img{position:absolute;inset:0;width:100%;height:100%}
+.lib-thumb.mosaic{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;place-items:stretch;background:#16222c}
+.lib-thumb.mosaic img{position:static}
+.lib-thumb.sys.fav{background:linear-gradient(135deg,#4b2bd6,#00ffde)}
+.lib-thumb.sys.rec{background:linear-gradient(135deg,#2c4558,#0f1a22)}
+
+/* Cuadrícula (botón ▦) */
+.lib-list.is-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
+.is-grid .lib-row{flex-direction:column;align-items:stretch;gap:8px;padding:0}
+.is-grid .lib-row:hover{background:none;transform:translateY(-4px)}
+.is-grid .lib-thumb{width:100%;height:auto;aspect-ratio:1;border-radius:14px}
+.is-grid .lib-thumb span{font-size:56px}
+.is-grid .lib-acts{position:absolute;top:6px;right:6px;gap:4px}
+.is-grid .lib-acts .lib-icon{width:34px;height:34px;background:rgba(0,0,0,.55)}
+
+/* Detalle de una lista */
+.lib-detail{margin-bottom:16px}
+.lib-hero{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
+.lib-hero .lib-thumb{width:160px;height:160px;border-radius:14px;box-shadow:0 14px 34px rgba(0,0,0,.5)}
+.lib-hero .lib-thumb span{font-size:64px}
+.lib-hero-info{display:flex;flex-direction:column;gap:10px;min-width:0}
+.lib-hero-info > span{color:var(--mut)}
+.lib-hero-btns{display:flex;gap:8px;flex-wrap:wrap}
+
+.lib-empty{color:var(--mut);text-align:center;margin:40px 12px}
 
 /* Selector "Agregar música" */
 .lib-picker{width:min(92vw,460px);max-height:80dvh;margin:auto;padding:0;border:1px solid var(--line);
@@ -72,7 +91,8 @@
   border-bottom:1px solid var(--line)}
 .lib-picker-head h4{font-size:17px}
 .lib-pick-list{list-style:none;overflow:auto;padding:8px}
-.lib-pick-list li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;padding:8px;border-radius:12px}
+.lib-pick-list li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;
+  padding:8px;border-radius:12px}
 .lib-pick-list li:hover{background:rgba(255,255,255,.06)}
 .lib-pick-txt{min-width:0}
 .lib-pick-txt b,.lib-pick-txt small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -80,3 +100,9 @@
 .lib-mini{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;font-weight:900;
   background:linear-gradient(135deg,hsl(var(--h) 70% 45%),hsl(calc(var(--h) + 40) 70% 28%))}
 .lib-pick-list .lib-pick-empty{display:block;color:var(--mut);text-align:center;padding:28px 16px}
+
+@media (max-width:480px){
+  .lib-list.is-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+  .lib-hero .lib-thumb{width:120px;height:120px}
+  .lib-hero .lib-thumb span{font-size:48px}
+}
