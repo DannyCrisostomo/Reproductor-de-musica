@@ -291,6 +291,8 @@
 .rcard p{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcard span{display:block;font-size:12.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rcard.on img{outline:3px solid var(--a);outline-offset:2px}
+.rcard.conn img{animation:rpulse .8s ease-in-out infinite alternate}
+@keyframes rpulse{from{opacity:.4}to{opacity:1}}
 .rfav{position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.55);font-size:16px;line-height:1;color:#fff}
 .rfav[aria-pressed=true]{color:var(--a)}
 @media (max-width:820px){#x-radio{order:3}}
@@ -359,6 +361,7 @@
       const seen = new Set();
       drawRadios(data.filter(s => s.url_resolved && s.url_resolved.startsWith('https')).map(norm)
         .filter(s => { const k = s.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+        .sort((a, b) => (a.bitrate > 128) - (b.bitrate > 128))
         .slice(0, 48));
     } catch {
       if (my === rTok) $('#rg').innerHTML = '<p class="mut">No se pudo conectar con el directorio de radios. Revisa tu conexión.</p>';
@@ -367,7 +370,39 @@
 
   const markOn = () => $('#rg').querySelectorAll('.rcard')
     .forEach(c => c.classList.toggle('on', isRadio() && radio.uuid === c.dataset.ru));
-  A.P.forEach(p => p.addEventListener('loadstart', markOn));
+  let connT, connecting = false;
+  const radioLabel = () => 'Radio' + (radio?.country ? ' · ' + radio.country : '');
+  const setConn = on => {
+    clearTimeout(connT);
+    connecting = on;
+    rsec.querySelectorAll('.rcard.conn').forEach(c => c.classList.remove('conn'));
+    if (!on) return;
+    rsec.querySelector(`.rcard[data-ru="${CSS.escape(radio.uuid)}"]`)?.classList.add('conn');
+    $('#pArtist').textContent = 'Conectando…';
+    status(`Conectando con ${radio.name}…`);
+    connT = setTimeout(() => {
+      if (!connecting) return;
+      $('#pArtist').textContent = 'Sin respuesta · prueba otra';
+      status('Esta emisora tarda demasiado en responder. Prueba con otra.');
+    }, 15000);
+  };
+  A.P.forEach(p => {
+    p.addEventListener('loadstart', () => { markOn(); if (!isRadio()) setConn(false); });
+    p.addEventListener('playing', () => {
+      if (p !== A.cp() || !isRadio()) return;
+      setConn(false);
+      $('#pArtist').textContent = radioLabel();
+      status('Radio: ' + radio.name);
+    });
+    p.addEventListener('waiting', () => {
+      if (p === A.cp() && isRadio() && !connecting) $('#pArtist').textContent = 'Cargando…';
+    });
+    p.addEventListener('error', () => {
+      if (p !== A.cp() || !isRadio()) return;
+      setConn(false);
+      $('#pArtist').textContent = 'Emisora no disponible';
+    });
+  });
 
   function playRadio(s) {
     radio = { ...s, href: new URL(s.url, location.href).href };
@@ -376,7 +411,7 @@
     p.src = s.url;
     p.play().catch(() => status('No se pudo reproducir esta emisora. Prueba con otra.'));
     $('#pTitle').textContent = s.name;
-    $('#pArtist').textContent = 'Radio' + (s.country ? ' · ' + s.country : '');
+    setConn(true);
     $('#pCover').src = rLogo(s);
     if ('mediaSession' in navigator) {
       try {
@@ -388,7 +423,6 @@
     }
     rb('/url/' + encodeURIComponent(s.uuid)).catch(() => {}); // cuenta la escucha en el directorio
     markOn();
-    status('Radio: ' + s.name);
   }
 
   const toggleRadio = () => {
