@@ -50,3 +50,33 @@
   .lib-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
   .lib-cover span{font-size:52px}
 }
+
+/* ===== Botones de agregar más visibles ===== */
+.lib-chip.primary{background:var(--a);color:var(--ink)}
+.lib-chip.primary:hover{background:#6dffea;color:var(--ink)}
+.lib-chip.big{height:48px;padding:0 26px;font-size:16px;box-shadow:0 8px 20px rgba(0,255,222,.3)}
+.lib-chip:disabled{opacity:.55;pointer-events:none}
+
+/* ＋ y ★ sobre las tarjetas: más grandes; el ＋ en color de acento */
+.lib-btn{width:40px;height:40px;font-size:18px}
+.lib-btn[data-act="add"]{background:var(--a);color:var(--ink);font-size:24px;font-weight:900;
+  box-shadow:0 4px 14px rgba(0,255,222,.45)}
+.lib-btn[data-act="add"]:hover{background:#6dffea}
+
+/* Selector "Agregar música" */
+.lib-picker{width:min(92vw,460px);max-height:80dvh;margin:auto;padding:0;border:1px solid var(--line);
+  border-radius:18px;background:#0f1a22;color:#fff;overflow:hidden}
+.lib-picker[open]{display:flex;flex-direction:column}
+.lib-picker::backdrop{background:rgba(0,0,0,.65)}
+.lib-picker-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;
+  border-bottom:1px solid var(--line)}
+.lib-picker-head h4{font-size:17px}
+.lib-pick-list{list-style:none;overflow:auto;padding:8px}
+.lib-pick-list li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;padding:8px;border-radius:12px}
+.lib-pick-list li:hover{background:rgba(255,255,255,.06)}
+.lib-pick-txt{min-width:0}
+.lib-pick-txt b,.lib-pick-txt small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-pick-txt small{color:var(--mut);font-size:12.5px}
+.lib-mini{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;font-weight:900;
+  background:linear-gradient(135deg,hsl(var(--h) 70% 45%),hsl(calc(var(--h) + 40) 70% 28%))}
+.lib-pick-list .lib-pick-empty{display:block;color:var(--mut);text-align:center;padding:28px 16px}
