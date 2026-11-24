@@ -76,6 +76,13 @@
 
   // ---------- Canciones ----------
   const keys = new Set();
+  const stored = new Set();          // canciones que ya tienen copia dentro de la app
+  let keep = !!store.get('keep');    // true = guardar copia de cada canción nueva que se encuentre
+  const saveCopy = async f => {
+    if ((await idb.add(f)) === undefined) return false;
+    stored.add(f.name + f.size);
+    return true;
+  };
   const AUDIO_EXT = /\.(mp3|m4a|aac|wav|ogg|opus|flac|wma)$/i;
 
   const fromName = name => {
@@ -197,9 +204,31 @@
   let xf = canFade ? Number(store.get('xf20') ?? 20) : 0;
   let xfading = false, xfDur = 20, fadeTimer = null;
 
+  let queue = null; // { name, keys }: si existe, solo se reproduce esa lista
+
   function nextIndex() {
     const n = songs.length;
     if (!n) return null;
+
+    if (queue) {
+      const pool = queue.keys.map(indexOfKey).filter(i => i >= 0);
+      if (pool.includes(cur)) {
+        if (pool.length === 1) return pool[0];
+        if (!shuffle) return pool[(pool.indexOf(cur) + 1) % pool.length];
+        if (!bag.length) {
+          bag = pool.filter(i => i !== cur);
+          for (let i = bag.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [bag[i], bag[j]] = [bag[j], bag[i]];
+          }
+        }
+        let i = bag.pop();
+        if (i === cur && bag.length) i = bag.pop();
+        return i;
+      }
+      queue = null; bag = []; // elegiste algo fuera de la lista: vuelve a lo normal
+    }
+
     if (!shuffle || n === 1) return (cur + 1) % n;
     if (!bag.length) {
       bag = [...songs.keys()].filter(i => i !== cur);
@@ -298,7 +327,7 @@
   }
 
   function refresh() {
-    renderList(); renderRows();
+    renderList(); renderRows(); updateKeep();
     const s = songs[cur];
     if (s) { $('#hTitle').textContent = $('#pTitle').textContent = s.title; $('#hArtist').textContent = $('#pArtist').textContent = s.artist; }
   }
@@ -429,7 +458,10 @@
     let n = 0;
     status('Buscando canciones…');
     for await (const fh of walk(dir)) {
-      try { if (addQuick(await fh.getFile())) n++; } catch {}
+      try {
+        const f = await fh.getFile();
+        if (addQuick(f)) { n++; if (keep) await saveCopy(f); }
+      } catch {}
       if (n && n % 25 === 0) {
         status(`Encontradas ${n}…`);
         if (first === 0 && songs.length === 25) load(0, false);
@@ -447,7 +479,7 @@
     const first = songs.length;
     let n = 0;
     for (const f of files) {
-      if (addQuick(f)) { n++; await idb.add(f); }
+      if (addQuick(f)) { n++; await saveCopy(f); }
       if (n && n % 25 === 0) { status(`Cargando ${n} de ${files.length}…`); await wait(); }
     }
     if (first === 0 && songs.length) load(0, false); else refresh();
@@ -484,8 +516,47 @@
   });
 
   $('#clearMine').addEventListener('click', async () => {
-    if (confirm('¿Quitar toda la música que agregaste?')) { await idb.clearAll(); location.reload(); }
+    if (confirm('¿Quitar toda la música que agregaste? (también se borran las copias guardadas en la app)')) {
+      await idb.clearAll(); store.set('keep', false); location.reload();
+    }
   });
+
+  // ---------- Guardar copia en la app (para no volver a pedir permiso) ----------
+  const keepBtn = $('#keep');
+  const updateKeep = () => {
+    if (!keepBtn) return;
+    const pend = songs.filter(s => s.file && !stored.has(s.key)).length;
+    keepBtn.style.display = songs.length ? '' : 'none';
+    keepBtn.style.opacity = pend ? '' : '.6';
+    keepBtn.disabled = !pend;
+    keepBtn.textContent = pend ? `Guardar música en la app (${pend})` : '✓ Música guardada en la app';
+  };
+
+  async function keepAll() {
+    const pend = songs.filter(s => s.file && !stored.has(s.key));
+    if (!pend.length) return updateKeep();
+    const bytes = pend.reduce((a, s) => a + s.file.size, 0);
+    const gb = b => (b / 1073741824).toFixed(1) + ' GB';
+    let free = null;
+    try { const q = await navigator.storage.estimate(); free = q.quota - q.usage; } catch {}
+    if (free != null && bytes > free * 0.9) {
+      status(`No hay espacio suficiente: necesitas ${gb(bytes)} y hay ${gb(free)} disponibles.`);
+      return;
+    }
+    if (!confirm(`Se guardará una copia de ${pend.length} canciones (${gb(bytes)}) dentro de la app, ` +
+                 'así no volverá a pedirte permiso. ¿Continuar?')) return;
+    keep = true; store.set('keep', true);
+    keepBtn.disabled = true;
+    let n = 0;
+    for (const s of pend) {
+      if (!(await saveCopy(s.file))) { status(`Se guardaron ${n} canciones; no hubo más espacio o falló el guardado.`); break; }
+      n++;
+      if (n % 5 === 0) { status(`Guardando… ${n} de ${pend.length}`); await wait(); }
+    }
+    if (n === pend.length) status(`Listo: ${n} canciones guardadas en la app. Ya no hará falta dar permiso.`);
+    updateKeep();
+  }
+  keepBtn?.addEventListener('click', keepAll);
 
   // ---------- Eventos ----------
   $('#lista').addEventListener('click', e => {
@@ -562,8 +633,8 @@
     } catch {}
   }
 
-  // Conexión con js/extras.js
-  window.__player = { P, cp, step, songs, cur: () => cur, load, toggle, gen, esc, liked, recent: () => recent };
+  // Conexión con js/extras.js y js/library-bridge.js
+  window.__player = { P, cp, step, songs, cur: () => cur, load, toggle, gen, esc, liked, recent: () => recent, syncLike, renderList, renderRows, setQueue: q => { queue = q; bag = []; } };
 
   // ---------- Inicio ----------
   (async () => {
@@ -580,14 +651,16 @@
       for (const r of await idb.all()) {
         const f = r.blob instanceof File ? r.blob : new File([r.blob], r.name, { type: r.blob.type });
         addQuick(f);
+        stored.add(f.name + f.size);
       }
       await applyCache();
+      updateKeep();
       if (songs.length) { restore(); status(`${songs.length} canciones guardadas.`); enrich(); }
 
       const dir = await idb.getMeta('dir');
       if (dir) {
         if ((await dir.queryPermission({ mode: 'read' })) === 'granted') { await scanFolder(dir); restore(); }
-        else status('Toca “Buscar música” para volver a cargar tu carpeta.');
+        else if (!songs.length) status('Toca “Buscar música” para volver a cargar tu carpeta.');
       }
       if (navigator.storage?.persist) navigator.storage.persist();
     } catch (err) {
