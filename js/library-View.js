@@ -38,6 +38,8 @@
   const hue = (id) => [...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
   const n = (k) => `${k} elemento${k === 1 ? '' : 's'}`;
   const letter = (t) => esc((t || '?').trim().charAt(0).toUpperCase());
+  // Datos actuales del ítem (título, artista, portada); los pone library-bridge.js
+  const live = (i) => (window.libraryResolve ? window.libraryResolve(i) : i);
 
   const SYS = {
     fav: { name: 'Tus favoritos', label: 'Favoritos', glyph: '★', get: (s) => s.favorites },
@@ -52,13 +54,15 @@
   // ---------- miniaturas ----------
   const img = (src) => `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">`;
 
-  const itemThumb = (item) =>
-    `<div class="lib-thumb" style="--h:${hue(item.id)}"><span>${letter(item.title)}</span>${item.cover ? img(item.cover) : ''}</div>`;
+  const itemThumb = (item) => {
+    const l = live(item);
+    return `<div class="lib-thumb" style="--h:${hue(item.id)}"><span>${letter(l.title)}</span>${l.cover ? img(l.cover) : ''}</div>`;
+  };
 
   const sysThumb = (key) => `<div class="lib-thumb sys ${key}"><span>${SYS[key].glyph}</span></div>`;
 
   function plThumb(pl) {
-    const covers = pl.items.map((i) => i.cover).filter(Boolean);
+    const covers = pl.items.map((i) => live(i).cover).filter(Boolean);
     if (covers.length >= 4) {
       return `<div class="lib-thumb mosaic">${covers.slice(0, 4).map(img).join('')}</div>`;
     }
@@ -79,15 +83,16 @@
     collRow('pl:' + pl.id, pl.name, `Playlist · ${n(pl.items.length)}`, plThumb(pl));
 
   function itemRow(item, inPlaylist) {
+    const l = live(item);
     const fav = lib.isFavorite(item.id);
     const act = inPlaylist
       ? `<button class="lib-icon" data-act="rm" aria-label="Quitar de la playlist">✕</button>`
       : `<button class="lib-icon" data-act="add" aria-label="Agregar a una playlist">＋</button>`;
     return `
       <article class="lib-row" data-id="${esc(item.id)}" tabindex="0" role="button"
-               aria-label="Reproducir ${esc(item.title)}">
+               aria-label="Reproducir ${esc(l.title)}">
         ${itemThumb(item)}
-        <div class="lib-meta"><p>${esc(item.title)}</p><span>${esc(item.subtitle)}</span></div>
+        <div class="lib-meta"><p>${esc(l.title)}</p><span>${esc(l.subtitle)}</span></div>
         <div class="lib-acts">
           ${act}
           <button class="lib-icon fav" data-act="fav" aria-pressed="${fav}" aria-label="Favorito">★</button>
@@ -181,28 +186,40 @@
   }
 
   // ---------- selector "Agregar música" ----------
+  let pickMap = new Map();
+
   function renderPicker() {
     const s = lib.getState();
     const pl = s.playlists.find((p) => 'pl:' + p.id === open);
     if (!pl) { picker.close(); return; }
 
+    const q = ($('#lib-pick-q')?.value || '').trim().toLowerCase();
+    const catalog = window.libraryCatalog ? window.libraryCatalog() : [];
     const seen = new Set();
-    const cands = [...s.favorites, ...s.recents].filter((i) => !seen.has(i.id) && seen.add(i.id));
+    let cands = [...s.favorites, ...s.recents, ...catalog].filter((i) => !seen.has(i.id) && seen.add(i.id));
+    if (q) {
+      cands = cands.filter((i) => {
+        const l = live(i);
+        return `${l.title} ${l.subtitle}`.toLowerCase().includes(q);
+      });
+    }
+    cands = cands.slice(0, 60);
+    pickMap = new Map(cands.map((i) => [i.id, i]));
 
     pickList.innerHTML = cands.length
       ? cands.map((i) => {
+          const l = live(i);
           const inPl = pl.items.some((x) => x.id === i.id);
           return `
             <li data-id="${esc(i.id)}">
-              <div class="lib-mini" style="--h:${hue(i.id)}">${letter(i.title)}</div>
-              <div class="lib-pick-txt"><b>${esc(i.title)}</b><small>${esc(i.subtitle)}</small></div>
+              <div class="lib-mini" style="--h:${hue(i.id)}">${letter(l.title)}${l.cover ? img(l.cover) : ''}</div>
+              <div class="lib-pick-txt"><b>${esc(l.title)}</b><small>${esc(l.subtitle)}</small></div>
               <button class="lib-chip ${inPl ? '' : 'primary'}" data-act="pick" ${inPl ? 'disabled' : ''}>
                 ${inPl ? '✓ Agregada' : '＋ Agregar'}
               </button>
             </li>`;
         }).join('')
-      : `<li class="lib-pick-empty">Aún no tienes favoritos ni recientes.
-         Marca la ★ en una emisora o reproduce algo y vuelve aquí.</li>`;
+      : `<li class="lib-pick-empty">${q ? 'Sin resultados.' : 'Aún no hay música. Pulsa “Buscar música” o marca la ★ en una emisora.'}</li>`;
   }
 
   // ---------- acciones ----------
@@ -276,6 +293,7 @@
       document.dispatchEvent(new CustomEvent('library:queue', { detail: { name: c.name, items: c.items } }));
       play(c.items[0]);
     } else if (act === 'open-picker') {
+      $('#lib-pick-q').value = '';
       renderPicker();
       picker.showModal();
     } else if (act === 'rename') {
@@ -287,11 +305,12 @@
   });
 
   $('#lib-picker-close').addEventListener('click', () => picker.close());
+  $('#lib-pick-q').addEventListener('input', renderPicker);
 
   pickList.addEventListener('click', (e) => {
     if (!e.target.closest('[data-act="pick"]')) return;
     const li = e.target.closest('[data-id]');
-    const item = allItems().find((i) => i.id === li.dataset.id);
+    const item = pickMap.get(li.dataset.id);
     if (item && open && open.startsWith('pl:')) lib.addToPlaylist(open.slice(3), item);
   });
 
@@ -315,6 +334,7 @@
         t.classList.toggle('on', on);
         on ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
       });
+      main.classList.remove('radio-on'); // la pestaña Radio (extras.js) oculta todo lo demás
       main.classList.add('lib-open');
       render();
     } else {
@@ -324,4 +344,5 @@
 
   // Redibuja solo cuando algo cambia y la vista está abierta
   lib.subscribe(() => { if (main.classList.contains('lib-open')) render(); });
+  document.addEventListener('library:refresh', () => { if (main.classList.contains('lib-open')) render(); });
 })();
