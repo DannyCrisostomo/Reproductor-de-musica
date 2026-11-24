@@ -90,8 +90,20 @@
         <button id="lib-new" class="lib-chip" type="button">＋ Nueva playlist</button>
       </div>
 
+      <div id="lib-pl-bar" class="lib-toolbar" hidden>
+        <button id="lib-add" class="lib-chip primary big" type="button">＋ Agregar música</button>
+      </div>
+
       <div id="lib-content" class="lib-grid"></div>
       <p id="lib-empty" class="lib-empty" role="status" hidden></p>
+
+      <dialog id="lib-picker" class="lib-picker" aria-label="Agregar música a la playlist">
+        <div class="lib-picker-head">
+          <h4>Agregar a la playlist</h4>
+          <button id="lib-picker-close" class="lib-chip primary" type="button">Listo</button>
+        </div>
+        <ul id="lib-pick-list" class="lib-pick-list"></ul>
+      </dialog>
     </section>
 
     <section class="hero" id="hero">
