@@ -63,7 +63,7 @@
     <header class="top">
       <nav class="tabs" aria-label="Secciones">
         <a href="#" class="on" aria-current="page" data-tab="discover">Discover</a>
-        <a href="#" data-tab="library">My library</a>
+        <a href="#" data-tab="library">Mi biblioteca</a>
         <a href="#" data-tab="radio">Radio</a>
       </nav>
       <label class="search">
@@ -73,28 +73,25 @@
       <img class="avatar" src="img_estilos/user.jpg" alt="Tu perfil" onerror="this.style.visibility='hidden'">
     </header>
 
-    <!-- ===== My library ===== -->
+    <!-- ===== Mi biblioteca ===== -->
     <section id="view-library" aria-labelledby="lib-title">
-      <div class="sh">
-        <h3 id="lib-title">My library</h3>
-        <button id="lib-back" class="lib-chip" type="button" hidden>← Playlists</button>
+      <div class="lib-head">
+        <button id="lib-back" class="lib-icon" type="button" aria-label="Volver" hidden>←</button>
+        <h3 id="lib-title">Mi biblioteca</h3>
+        <div class="lib-head-actions" id="lib-head-actions">
+          <button id="lib-layout" class="lib-icon" type="button" aria-label="Ver como cuadrícula">▦</button>
+          <button id="lib-new" class="lib-icon primary" type="button" aria-label="Crear playlist">＋</button>
+        </div>
       </div>
 
       <div class="lib-filters" id="lib-filters">
-        <button class="lib-chip on" data-filter="favorites" aria-pressed="true">Favoritos</button>
         <button class="lib-chip" data-filter="playlists" aria-pressed="false">Playlists</button>
-        <button class="lib-chip" data-filter="recents" aria-pressed="false">Recientes</button>
+        <button class="lib-chip" data-filter="radios" aria-pressed="false">Emisoras</button>
+        <button class="lib-chip" data-filter="songs" aria-pressed="false">Canciones</button>
       </div>
 
-      <div id="lib-toolbar" class="lib-toolbar" hidden>
-        <button id="lib-new" class="lib-chip" type="button">＋ Nueva playlist</button>
-      </div>
-
-      <div id="lib-pl-bar" class="lib-toolbar" hidden>
-        <button id="lib-add" class="lib-chip primary big" type="button">＋ Agregar música</button>
-      </div>
-
-      <div id="lib-content" class="lib-grid"></div>
+      <div id="lib-detail" class="lib-detail" hidden></div>
+      <div id="lib-content" class="lib-list"></div>
       <p id="lib-empty" class="lib-empty" role="status" hidden></p>
 
       <dialog id="lib-picker" class="lib-picker" aria-label="Agregar música a la playlist">
