@@ -153,4 +153,4 @@
     lastRecent = item.id;
     lib.addRecent(item);
   }));
-})();
+})(); 
