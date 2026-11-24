@@ -17,6 +17,9 @@
   const title = $('#lib-title');
   const back = $('#lib-back');
   const filters = $('#lib-filters');
+  const plBar = $('#lib-pl-bar');
+  const picker = $('#lib-picker');
+  const pickList = $('#lib-pick-list');
   if (!main || !tabs || !content) return;
 
   let filter = 'favorites';
@@ -108,6 +111,33 @@
     content.innerHTML = html;
     empty.hidden = !!html;
     empty.textContent = msg;
+    plBar.hidden = !pl;
+    if (picker.open) renderPicker();
+  }
+
+  // ---------- selector "Agregar música" ----------
+  function renderPicker() {
+    const s = lib.getState();
+    const pl = s.playlists.find((p) => p.id === openPl);
+    if (!pl) { picker.close(); return; }
+
+    const seen = new Set();
+    const cands = [...s.favorites, ...s.recents].filter((i) => !seen.has(i.id) && seen.add(i.id));
+
+    pickList.innerHTML = cands.length
+      ? cands.map((i) => {
+          const inPl = pl.items.some((x) => x.id === i.id);
+          return `
+            <li data-id="${esc(i.id)}">
+              <div class="lib-mini" style="--h:${hue(i.id)}">${esc((i.title || '?').trim().charAt(0).toUpperCase())}</div>
+              <div class="lib-pick-txt"><b>${esc(i.title)}</b><small>${esc(i.subtitle)}</small></div>
+              <button class="lib-chip ${inPl ? '' : 'primary'}" data-act="pick" ${inPl ? 'disabled' : ''}>
+                ${inPl ? '✓ Agregada' : '＋ Agregar'}
+              </button>
+            </li>`;
+        }).join('')
+      : `<li class="lib-pick-empty">Aún no tienes favoritos ni recientes.
+         Marca la ★ en una emisora o reproduce algo y vuelve aquí.</li>`;
   }
 
   // ---------- acciones ----------
@@ -142,6 +172,16 @@
   });
 
   back.addEventListener('click', () => { openPl = null; render(); });
+
+  $('#lib-add').addEventListener('click', () => { renderPicker(); picker.showModal(); });
+  $('#lib-picker-close').addEventListener('click', () => picker.close());
+
+  pickList.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-act="pick"]')) return;
+    const li = e.target.closest('[data-id]');
+    const item = allItems().find((i) => i.id === li.dataset.id);
+    if (item && openPl) lib.addToPlaylist(openPl, item);
+  });
 
   $('#lib-new').addEventListener('click', () => {
     const n = prompt('Nombre de la playlist');
