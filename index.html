@@ -9,6 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="img/image1.jpg">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/library.css">
   <title>Playlist · Reproductor de música</title>
 </head>
 <body>
@@ -61,9 +62,9 @@
   <main class="main">
     <header class="top">
       <nav class="tabs" aria-label="Secciones">
-        <a href="#" class="on" aria-current="page">Discover</a>
-        <a href="#">My library</a>
-        <a href="#">Radio</a>
+        <a href="#" class="on" aria-current="page" data-tab="discover">Discover</a>
+        <a href="#" data-tab="library">My library</a>
+        <a href="#" data-tab="radio">Radio</a>
       </nav>
       <label class="search">
         <svg class="i"><use href="#search"/></svg>
@@ -71,6 +72,27 @@
       </label>
       <img class="avatar" src="img_estilos/user.jpg" alt="Tu perfil" onerror="this.style.visibility='hidden'">
     </header>
+
+    <!-- ===== My library ===== -->
+    <section id="view-library" aria-labelledby="lib-title">
+      <div class="sh">
+        <h3 id="lib-title">My library</h3>
+        <button id="lib-back" class="lib-chip" type="button" hidden>← Playlists</button>
+      </div>
+
+      <div class="lib-filters" id="lib-filters">
+        <button class="lib-chip on" data-filter="favorites" aria-pressed="true">Favoritos</button>
+        <button class="lib-chip" data-filter="playlists" aria-pressed="false">Playlists</button>
+        <button class="lib-chip" data-filter="recents" aria-pressed="false">Recientes</button>
+      </div>
+
+      <div id="lib-toolbar" class="lib-toolbar" hidden>
+        <button id="lib-new" class="lib-chip" type="button">＋ Nueva playlist</button>
+      </div>
+
+      <div id="lib-content" class="lib-grid"></div>
+      <p id="lib-empty" class="lib-empty" role="status" hidden></p>
+    </section>
 
     <section class="hero" id="hero">
       <img id="hCover" alt="">
@@ -139,9 +161,12 @@
   window.jsmediatags ||
     document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"><\/script>');
 </script>
+
+<!-- Biblioteca: el store va ANTES para que app.js y extras.js puedan usar window.library -->
+<script src="js/library-store.js"></script>
 <script src="js/app.js"></script>
 <script src="js/extras.js"></script>
-<script src="js/library-store.js"></script>
+<script src="js/library-view.js"></script>
 
 <!-- Service worker: guarda la página para usarla sin conexión -->
 <script>
@@ -152,4 +177,4 @@
   }
 </script>
 </body>
-</html> 
+</html>
